@@ -4,7 +4,9 @@ MARE turns MongoDB from a passive RAG data source into an information environmen
 
 Conventional RAG embeds every chunk and returns Top-K. MARE embeds only a small **navigation index** (618 vectors here vs 5424 RAG chunks) and lets the agent hop, filter, and count against live Mongo data.
 
-This repository is the MVP described in `PRD — Mongo-Native Adaptive Retrieval Engine.md`.
+This repository is the working MVP. The rest of this README is the product document: when to use it, how to run it, where it beats RAG, and how navigation and retrieval are implemented.
+
+**Contents:** [When to use MARE](#should-you-use-mare-or-rag) · [Quickstart](#quickstart) · [Integrate](#integrating-mare) · [Where it wins](#where-mare-wins-case-by-case) · [Architecture](#architecture) · [How the agent calls MongoDB](#how-the-agent-calls-mongodb)
 
 ## Should you use MARE or RAG?
 
@@ -208,24 +210,201 @@ python scripts/run_benchmark.py --class complex_multihop
 
 ---
 
-## How it works
+## Architecture
+
+Conventional RAG treats every question as one problem: embed the prompt, return Top-K chunks, generate. That collapses two jobs that are not the same.
+
+| Job | Question it answers | What RAG does | What MARE does |
+| --- | --- | --- | --- |
+| **Navigation** | *Where* in this database should I look? | Nowhere. The index is a flat bag of chunks. | Search a hierarchy of neighborhoods, then hop. |
+| **Retrieval** | *What* evidence should I read, and when do I stop? | Always the same: Top-K. | Query, read, or skip — then stop when the evidence is enough. |
+
+MARE is the split made concrete. MongoDB stays the system of record. Nothing is exported to PDFs, Markdown, or another vector database. Vectors exist only to help find the right neighborhood; once there, the system prefers `find`, filters, lexical search, and direct document reads.
 
 ```text
-Question
-  → Agent tool loop (gpt-5-mini), schema-blind by default
-      search_information   find the neighborhood in the navigation index
-      retrieve_evidence    read the raw Mongo documents
-      query_documents      structured find, using only observed field names
-      submit_answer        stop when the evidence is sufficient
-  → Optional gpt-5 synthesis (when OPENAI_MODEL differs from the agent model)
-  → Grounded answer with database.collection:document_id citations
+                     Question
+                         │
+                         ▼
+                  Agent tool loop
+                   (schema-blind)
+                    /         \
+           Navigation          Retrieval
+         "where is it?"      "what do I read?"
+              │                    │
+              ▼                    ▼
+     navigation_nodes         raw Mongo docs
+     (618 vectors)            (untouched)
+              │                    │
+              └────────┬───────────┘
+                       ▼
+              Grounded answer + citations
+              database.collection:document_id
 ```
 
-Two design choices carry the whole approach:
+### Problem 1 — Navigation
 
-**Vectors live on navigation nodes, not chunks.** A node describes a database, a collection, or a logical group (for example "deployments for cust_007") and *points at* raw documents via `source.filter` or `document_ids`. It never copies payloads. That is why 618 vectors replace 5424 chunks.
+Given thousands or millions of records split across collections, the agent does not know which collection, which customer, or which month matters. The prompt is in English; the data is in Mongo.
 
-**Nodes hand back the schema and the next hop.** Each node returns its `database.collection`, a reusable filter, its important fields with examples, and `related_nodes` — sibling neighborhoods in *other* collections that share the same entity. That is what lets a schema-blind agent complete the bridge hop instead of stalling after the first lookup.
+**Solution: a multi-resolution map, not a chunk pile.**
+
+```text
+Database                    mare_demo
+  └── Collection            customers | deployments | migrations | …
+        └── Group           "deployments for cust_007"
+              └── Document  optional pointer (small collections only)
+                    └── Raw fields live in the source collection, not here
+```
+
+Each of those levels is a **navigation node** in `_agent_retrieval.navigation_nodes`. A node is a pointer plus a description, never a copy of the payload:
+
+```json
+{
+  "_id": "nav:group:mare_demo:deployments:customer.cust_007",
+  "node_type": "group",
+  "name": "deployments for cust_007",
+  "summary": "…",
+  "source": {
+    "database": "mare_demo",
+    "collection": "deployments",
+    "filter": { "customer_id": "cust_007" },
+    "pointer_type": "query"
+  },
+  "schema": {
+    "important_fields": ["status", "started_at", "error_code"],
+    "field_descriptions": { "status": "failed", "error_code": "AUTH_401" }
+  },
+  "metadata": { "entities": ["cust_007"], "document_count": 2 }
+}
+```
+
+How the map is built (`scripts/build_hierarchy.py`):
+
+1. **Database node** — purpose plus the list of collections.
+2. **Collection node** — sampled schema, important fields, representative terms, a compact summary. This is how a schema-blind agent learns that `subscription_tier` exists: it is on the node, not in the system prompt.
+3. **Groups** — deterministic slices so large collections are not one blob. Operational collections group by `customer_id`; logs also group by month. Semantic clustering is out of scope for the MVP.
+4. **Document pointers** — only for small collections (customers, ≤80 docs). Still pointers (`document_ids`), not copied records.
+
+Search text on each node is composed from name, collection, summary, field names, entities, and topics — not the LLM summary alone — so a lossy summary cannot hide an ID or error code.
+
+**How the agent moves on the map**
+
+Four primitives, all over *nodes*, not chunks. A small router picks a default; the agent can override it.
+
+| Need | Primitive | Atlas feature |
+| --- | --- | --- |
+| IDs, error codes, names | lexical | `$search` |
+| "authentication failures", "root cause" | semantic | `$vectorSearch` on node `search_text` (`voyage-4-lite` Automated Embedding when the cluster allows it; otherwise app-side embeddings) |
+| Unclear mix | hybrid | `$rankFusion`, or reciprocal rank fusion as fallback |
+| Already know `database.collection` and a field | structured `find` | Mongo query with tenant injected |
+
+The high-level tool is `search_information`. It runs that pipeline and returns matching nodes with summaries, `important_fields`, field examples, children, and **`related_nodes`**.
+
+`related_nodes` is the hop. When a result is tied to an entity (`cust_007`), the server looks up sibling nodes in *other* collections whose filter or `metadata.entities` share that id, and returns them in the same tool result. Elena Rossi → Apex is one `find`. Apex → May deployments / `mig_auth_sso` is the next neighborhood, offered immediately. A schema-aware Mongo MCP agent can do the first lookup; it does not get the second for free.
+
+The agent is **schema-blind by default**. The system prompt names no databases, collections, or fields. It is told only: discover those from tool results; never invent them; when `related_nodes` appear, follow them. `--informed` / `MARE_SCHEMA_IN_PROMPT=true` puts the schema back in as a control. Blind and informed scoring the same is the evidence that the index, not a leaked prompt, found the neighborhood.
+
+### Problem 2 — Retrieval
+
+Once the agent is in a neighborhood, the question is no longer "where?" It is "what do I read, in what form, and when is it enough?" RAG's answer is always Top-K chunks. That cannot count a collection, cannot return zero documents, and cannot follow a join that was not in the original embedding.
+
+**Solution: retrieve by policy, from the source of record.**
+
+| Situation | What MARE does | Tool |
+| --- | --- | --- |
+| Neighborhood identified, need the actual rows | Expand node pointers / filters into raw docs | `retrieve_evidence` |
+| Field predicate already observed (`subscription_tier`, `opened_at`, `account_manager`) | Structured `find` on `database.collection` | `query_documents` |
+| Need a document by id | Direct read | `read_documents` |
+| Enough evidence, or the budget is gone | Stop and answer, citing only docs that were seen | `submit_answer` |
+
+Python does not let the model talk to Mongo raw. Every tool goes through `inject_tenant`: a model-supplied `tenant_id` cannot widen scope. Citations are harvested from retrieved documents (`database.collection:document_id`); unknown/draft placeholders are dropped.
+
+The loop (`app/retrieval/agent_loop.py`):
+
+```text
+messages = [blind system prompt, user question]
+while turns < max_agent_turns and elapsed < max_elapsed_ms:
+    model may call search_information | retrieve_evidence | query_documents | submit_answer
+    tool results (including schema fields and related_nodes) go back into the conversation
+    if submit_answer → stop
+if budget exhausted → force submit_answer from evidence already in hand
+if agent model ≠ answer model → one gpt-5 synthesis over the gathered docs
+persist session + traces
+```
+
+Stopping is a budget plus a decision, not "we got K chunks":
+
+- the model calls `submit_answer` when the retrieved docs answer the question
+- hard caps: `MARE_MAX_AGENT_TURNS` (default 10), `MARE_MAX_ELAPSED_MS`, retrieval/token ceilings
+- on exhaustion the loop forces a submit rather than inventing more searches
+- a session records hypothesis, claims (`supported` / `partially_supported` / `unsupported` / `contradicted`), citations, stop reason, and a step-by-step trace
+
+The older Python state machine (best-first queue, evidence-gap scoring) is still available as `POST /ask` with `"method": "legacy"`. The default path is the tool loop: the model chooses the next primitive; the server enforces tenant, budgets, and citation hygiene.
+
+### How the agent calls MongoDB
+
+The model never gets a Mongo shell, a connection string, or `pymongo`. It only gets **tools**. Each tool is a typed function whose implementation runs on the server, talks to Atlas, injects `tenant_id`, and returns JSON the model can read. That is true for both surfaces:
+
+```text
+  Cursor / Claude / any MCP client          POST /ask  (in-process loop)
+              │                                        │
+              │  MCP tools                             │  OpenAI tool calls
+              ▼                                        ▼
+        MARE MCP server  ──────────────────►  same service layer
+        python -m app.mcp_server.server       app/search/service.py
+                                              app/retrieval/tools.py
+                       │
+                       ▼
+                 Atlas MongoDB
+            mare_demo  +  _agent_retrieval
+            (tenant filter injected here, not by the model)
+```
+
+**In-process (`POST /ask`).** `run_agent` sends the schema-blind system prompt plus four function definitions to the agent model (`gpt-5-mini` by default): `search_information`, `retrieve_evidence`, `query_documents`, `submit_answer`. The model emits a tool call; Python dispatches it; the result (nodes, fields, `related_nodes`, or raw docs) is appended to the conversation. Repeat until `submit_answer` or the turn budget. This is ordinary OpenAI tool calling, not MCP, but the functions are the same objects the MCP server wraps.
+
+**MCP (what you give a client agent).** `python -m app.mcp_server.server` exposes that surface over the Model Context Protocol, so Cursor or any MCP host can drive Mongo the same way without embedding MARE in its own process. Point `mcp.json` at the server with `MONGODB_URI` and `OPENAI_API_KEY`. The tools the host advertises to *its* model are:
+
+| Tool | What the agent is allowed to do in Mongo |
+| --- | --- |
+| `list_databases` / `list_collections` | See which databases MARE will touch (`mare_demo`, `_agent_retrieval`, `_rag_baseline`). |
+| `get_node` / `get_children` | Walk the navigation tree by id. |
+| `search_information` | “Where does this live?” — hybrid/lexical/semantic search over **nodes**, plus schema fields and `related_nodes`. |
+| `lexical_search` / `semantic_search` / `hybrid_search` | Same search, if the agent wants to pick the method itself. |
+| `search_within` | Lexical search inside one node’s region of raw documents. |
+| `retrieve_evidence` | “Read these neighborhoods” — expand node ids to source documents. |
+| `query_documents` | Structured `find` on `database.collection` with a filter the agent observed (never `tenant_id`). |
+| `read_documents` | Fetch specific ids from a collection. |
+| `ask` | Do not micro-manage: run the full in-process agent loop and return the grounded answer. |
+
+There is a second, unrelated MCP in this project: **MongoDB MCP** (Cursor connection `preconfigured`). That one is for a human or an ops agent — schema inspection, index creation, debug aggregations. It is not the retrieval product. **MARE MCP** is what a client agent should be given: navigate, then retrieve, with tenant and citations enforced.
+
+The important constraint, on both paths: the agent can *request* a query; it cannot *authorize* one. `inject_tenant` runs inside every read. Allowed databases are a server-side allowlist. The model can invent a collection name and get an error; it cannot widen tenant scope or dump another database.
+
+That is why the five comparison cases land where they do:
+
+| Case | Navigation | Retrieval |
+| --- | --- | --- |
+| Simple lookup | Unnecessary — the id is in the prompt | One customer read. RAG also wins this. |
+| Named multi-hop | Unnecessary — both ids are named | Top-K can scoop the story. RAG's home turf. |
+| Bridge | Find the unnamed customer, then follow `related_nodes` | Read deployments + migration, not a similar ticket. |
+| Aggregation | Discover the customers collection and `subscription_tier` from nodes | Count with a filter, not with Top-K. |
+| Negative | Discover incidents + the date field | A filter that returns **zero** docs is the evidence. Top-K cannot produce that. |
+
+### Data layout
+
+Raw data is never copied into the navigation index.
+
+| Database | Role |
+| --- | --- |
+| `mare_demo` | System of record. Untouched synthetic SaaS data: customers, tickets, deployments, migrations, incidents, logs. Ten engineered causal stories; evidence for each is split across collections on purpose. |
+| `_agent_retrieval` | `navigation_nodes` (the map), `evidence_sessions` (one per question), `retrieval_traces` (every tool call), `config`. |
+| `_rag_baseline` | `chunks` for conventional RAG, same embedding model, so vector count is a fair comparison. |
+
+```text
+mare_demo.customers  ──pointers──►  _agent_retrieval.navigation_nodes
+mare_demo.deployments ──filter──►   (source.database / collection / filter / document_ids)
+mare_demo.migrations
+…
+```
 
 ### MongoDB-native primitives
 
@@ -236,21 +415,21 @@ Two design choices carry the whole approach:
 | Hybrid | `$rankFusion` when available, otherwise reciprocal rank fusion |
 | Structured retrieval | `find` / aggregation with mandatory tenant-scope injection |
 | Retrieval state | `_agent_retrieval.evidence_sessions` + `retrieval_traces` |
-| RAG baseline | `_rag_baseline.chunks`, same embedding model, for a fair vector count |
+| RAG baseline | `_rag_baseline.chunks`, same embedding model |
 
-If Automated Embedding is unavailable on the cluster, MARE falls back to application-side embeddings (`OPENAI_EMBEDDING_MODEL`). The capability probe records which path is active.
+If Automated Embedding is unavailable, MARE falls back to application-side embeddings (`OPENAI_EMBEDDING_MODEL`). `scripts/probe_capabilities.py` records which path is active.
 
-### Data layout
+### Vector minimization
 
-| Database | Role |
-| --- | --- |
-| `mare_demo` | Untouched synthetic source: customers, tickets, deployments, migrations, incidents, logs |
-| `_agent_retrieval` | `navigation_nodes`, `evidence_sessions`, `retrieval_traces`, `config` |
-| `_rag_baseline` | `chunks` for conventional RAG |
+Dense vectors exist only where they help *find a neighborhood*. They do not exist on every raw chunk.
 
-The synthetic dataset contains 10 engineered causal stories whose evidence is deliberately split across collections. The Apex Logistics SSO story (`cust_007` / `mig_auth_sso`) is the one used in the bridge and multi-hop cases.
+```text
+RAG (this demo):     every document → chunks → 5424 vectors
+MARE (this demo):    database + collections + groups + a few customer pointers → 618 vectors
+                     ratio 0.1139
+```
 
-Nothing is exported. MongoDB stays the system of record, the navigation index, the search system, the evidence source, and the retrieval state store.
+Once the neighborhood is known, retrieval is a Mongo query. That is both the cost story and the accuracy story: you cannot count, prove absence, or hop by embedding harder.
 
 ---
 
