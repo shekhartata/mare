@@ -13,3 +13,4 @@ benchmarks/results/
 *.log
 .coverage
 htmlcov/
+PRD — Mongo-Native Adaptive Retrieval Engine.md
