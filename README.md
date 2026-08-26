@@ -1,5 +1,7 @@
 # Mongo Adaptive Retrieval Engine (MARE)
 
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 MARE turns MongoDB from a passive RAG data source into an information environment an agent can **navigate**: find where the answer lives, then read the actual records.
 
 Conventional RAG embeds every chunk and returns Top-K. MARE embeds only a small **navigation index** (618 vectors here vs 5424 RAG chunks) and lets the agent hop, filter, and count against live Mongo data.
@@ -461,3 +463,7 @@ tests/
 ## Out of scope (MVP)
 
 Semantic clustering of groups, change-stream incremental refresh, multimodal retrieval, learned routing. Batch rebuild of the hierarchy is the freshness path for now.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).

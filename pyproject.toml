@@ -7,7 +7,11 @@ name = "mare"
 version = "0.1.0"
 description = "Mongo-Native Adaptive Retrieval Engine"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+]
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.32.0",
