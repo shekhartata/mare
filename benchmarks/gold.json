@@ -1,0 +1,648 @@
+{
+  "queries": [
+    {
+      "id": "mh_auth_sso",
+      "class": "complex_multihop",
+      "question": "Why did customer Apex Logistics (cust_007) begin experiencing deployment failures after migration mig_auth_sso, and what evidence supports the most likely root cause?",
+      "gold_answer": "Apex Logistics (cust_007) began failing production deployments after migration mig_auth_sso (2024-05-10) changed the SSO issuer from https://auth-v2.apex.io to https://auth-v3.apex.io. Deployments dep_apex_fail_1 and dep_apex_fail_2 failed with AUTH_401. Logs show jwt issuer mismatch: expected auth-v3, got auth-v2. Ticket tkt_1001 and incident inc_1001 corroborate authentication failures after the migration.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_auth_sso"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1002"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_007"
+        }
+      ],
+      "story_id": "auth_sso"
+    },
+    {
+      "id": "sem_auth_incidents",
+      "class": "semantic",
+      "question": "Find incidents involving authentication failures.",
+      "gold_answer": "Apex Logistics (cust_007) began failing production deployments after migration mig_auth_sso (2024-05-10) changed the SSO issuer from https://auth-v2.apex.io to https://auth-v3.apex.io. Deployments dep_apex_fail_1 and dep_apex_fail_2 failed with AUTH_401. Logs show jwt issuer mismatch: expected auth-v3, got auth-v2. Ticket tkt_1001 and incident inc_1001 corroborate authentication failures after the migration.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        }
+      ],
+      "story_id": "auth_sso"
+    },
+    {
+      "id": "simple_apex_tier",
+      "class": "simple_lookup",
+      "question": "What is customer cust_007's current subscription tier?",
+      "gold_answer": "Apex Logistics (cust_007) began failing production deployments after migration mig_auth_sso (2024-05-10) changed the SSO issuer from https://auth-v2 (see customer record for tier).",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_007"
+        }
+      ],
+      "story_id": "auth_sso"
+    },
+    {
+      "id": "mh_billing",
+      "class": "complex_multihop",
+      "question": "Why did Northstar Payments (cust_012) start missing invoices after migration mig_bill_wh, and which records prove the root cause?",
+      "gold_answer": "Northstar Payments (cust_012) invoice failures started after migration mig_bill_wh changed the billing webhook from /billing/v1 to /billing/v2. Logs show HTTP 404 to the old URL. Ticket tkt_2001 and incident inc_2001 describe missing invoices.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_bill_wh"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_ns_bill_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_2001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_2001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_2001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_012"
+        }
+      ],
+      "story_id": "billing_webhook"
+    },
+    {
+      "id": "sem_billing",
+      "class": "semantic",
+      "question": "Find tickets about invoice or billing webhook problems.",
+      "gold_answer": "Northstar Payments (cust_012) invoice failures started after migration mig_bill_wh changed the billing webhook from /billing/v1 to /billing/v2. Logs show HTTP 404 to the old URL. Ticket tkt_2001 and incident inc_2001 describe missing invoices.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_2001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_2001"
+        }
+      ],
+      "story_id": "billing_webhook"
+    },
+    {
+      "id": "simple_northstar_region",
+      "class": "simple_lookup",
+      "question": "What region is customer cust_012 in?",
+      "gold_answer": "Northstar Payments (cust_012) invoice failures started after migration mig_bill_wh changed the billing webhook from /billing/v1 to /billing/v2. Logs show HTTP 404 to the old URL. Ticket tkt_2001 and incident inc_2001 describe missing invoices.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_012"
+        }
+      ],
+      "story_id": "billing_webhook"
+    },
+    {
+      "id": "mh_tls",
+      "class": "complex_multihop",
+      "question": "Why did Harbor Health (cust_019) deployments fail after the region migration to eu-west-1, and what evidence supports the root cause?",
+      "gold_answer": "Harbor Health (cust_019) moved from us-east-1 to eu-west-1 via mig_region_eu. The eu-west-1 load balancer certificate expired. Deployments fail with TLS_HANDSHAKE_ERROR and logs show certificate verify failed: certificate has expired.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_region_eu"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_hh_tls_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_3001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_3001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_3001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_019"
+        }
+      ],
+      "story_id": "tls_region"
+    },
+    {
+      "id": "mh_ratelimit",
+      "class": "complex_multihop",
+      "question": "Why did PixelForge (cust_003) start seeing API timeouts and 429 errors in April, and what customer-record change explains it?",
+      "gold_answer": "PixelForge (cust_003) was downgraded from enterprise to pro on 2024-04-02 with a monthly_request_quota of 100000. Logs show 429 Too Many Requests from api-gateway. Tickets report API timeouts; there is no migration \u2014 the cause is the plan change.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_003"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_4001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_4001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_4001"
+        }
+      ],
+      "story_id": "rate_limit"
+    },
+    {
+      "id": "simple_pixelforge_tier",
+      "class": "simple_lookup",
+      "question": "What is customer cust_003's current subscription tier?",
+      "gold_answer": "PixelForge (cust_003) was downgraded from enterprise to pro on 2024-04-02 with a monthly_request_quota of 100000 (see customer record for tier).",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_003"
+        }
+      ],
+      "story_id": "rate_limit"
+    },
+    {
+      "id": "mh_iam",
+      "class": "complex_multihop",
+      "question": "Why did Redwood Analytics (cust_022) deployments fail after the AWS to GCP migration, and what permission is missing?",
+      "gold_answer": "Redwood Analytics (cust_022) migrated from AWS to GCP (mig_aws_gcp). Deployments fail with AccessDenied because service account mare-runtime@redwood.iam.gserviceaccount.com is missing roles/storage.objectAdmin on the artifacts bucket.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_aws_gcp"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_rw_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_5001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_5001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_5001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_022"
+        }
+      ],
+      "story_id": "iam_gcp"
+    },
+    {
+      "id": "mh_cache",
+      "class": "complex_multihop",
+      "question": "Why did Quilt Retail (cust_031) show wrong storefront prices after the catalog schema migration, and what evidence supports cache invalidation as the cause?",
+      "gold_answer": "Quilt Retail (cust_031) migrated catalog schema to v4 (mig_catalog_v4) but the storefront cache still served schema version 3, producing wrong prices. Logs show stale product schema version 3.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_catalog_v4"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_quilt_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_6001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_6001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_6001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_031"
+        }
+      ],
+      "story_id": "cache_schema"
+    },
+    {
+      "id": "mh_apikey",
+      "class": "complex_multihop",
+      "question": "Why is Orbit Media (cust_041) billing-worker failing after the API key rotation, and which service still uses the old key?",
+      "gold_answer": "Orbit Media (cust_041) rotated API keys in mig_key_rot. billing-worker deployments still use the old key and logs show invalid_api_key.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_key_rot"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_orbit_bill"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_7001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_7001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_7001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_041"
+        }
+      ],
+      "story_id": "api_key"
+    },
+    {
+      "id": "mh_pool",
+      "class": "complex_multihop",
+      "question": "Why did Cascade Bank (cust_015) see intermittent 500s and connection pool errors after deployment dep_cascade_pool?",
+      "gold_answer": "Cascade Bank (cust_015) deployment dep_cascade_pool reduced mongo pool size to 5. During a traffic spike, logs show MongoServerError: connection pool exhausted and tickets report intermittent 500s.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_cascade_pool"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_8001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_8001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_8001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_015"
+        }
+      ],
+      "story_id": "pool_exhaust"
+    },
+    {
+      "id": "mh_flag",
+      "class": "complex_multihop",
+      "question": "Why did Lumen Education (cust_028) users see a blank dashboard after the new UI deployment, and which feature flag is involved?",
+      "gold_answer": "Lumen Education (cust_028) deployed the new dashboard (dep_lumen_ui) which depends on feature flag checkout_v2. The customer record has checkout_v2=false, and logs say feature checkout_v2 disabled for tenant, causing a blank dashboard.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_028"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_lumen_ui"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_9001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_9001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_9001"
+        }
+      ],
+      "story_id": "feature_flag"
+    },
+    {
+      "id": "mh_dst",
+      "class": "complex_multihop",
+      "question": "Why did Solstice Travel (cust_044) miss booking confirmations after the scheduler 2.8.1 deployment around the DST change?",
+      "gold_answer": "Solstice Travel (cust_044) deployed scheduler 2.8.1 (dep_solstice_sched) which uses fixed UTC+0 offsets. After the March DST change, jobs fired 1 hour late. Tickets report missed booking confirmations.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_solstice_sched"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1101"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1101"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1101"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_044"
+        }
+      ],
+      "story_id": "dst_tz"
+    },
+    {
+      "id": "bridge_elena_may_deploys",
+      "class": "bridge",
+      "question": "An enterprise customer in us-east-1 whose account manager is Elena Rossi started failing production deployments in May 2024. What is the most likely root cause?",
+      "gold_answer": "The customer is Apex Logistics (cust_007). After migration mig_auth_sso (2024-05-10) changed AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io, production deployments dep_apex_fail_1 and dep_apex_fail_2 failed with AUTH_401 (unauthorized / jwt issuer mismatch).",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_auth_sso"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1002"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_007"
+        }
+      ],
+      "story_id": "auth_sso",
+      "must_contain_groups": [
+        [
+          "cust_007",
+          "apex"
+        ],
+        [
+          "auth_401",
+          "issuer",
+          "mig_auth_sso",
+          "sso"
+        ]
+      ]
+    },
+    {
+      "id": "agg_enterprise_count",
+      "class": "aggregation",
+      "question": "How many customers in mare_demo are currently on the enterprise subscription tier?",
+      "gold_answer": "18 customers are on the enterprise subscription tier.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_002"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_004"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_005"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_007"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_012"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_015"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_017"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_018"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_019"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_021"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_022"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_025"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_031"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_037"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_040"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_041"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_045"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "customers",
+          "document_id": "cust_046"
+        }
+      ],
+      "story_id": null,
+      "must_contain_all": [
+        "18"
+      ]
+    },
+    {
+      "id": "neg_cedar_april_incidents",
+      "class": "negative",
+      "question": "Did Cedar Systems (cust_004) have any incidents opened in April 2024?",
+      "gold_answer": "No. Cedar Systems (cust_004) has no incidents with opened_at in April 2024.",
+      "gold_sources": [],
+      "story_id": null,
+      "must_contain_any": [
+        "no",
+        "none",
+        "zero",
+        "0 incidents",
+        "did not",
+        "no incidents"
+      ],
+      "must_not_contain": [
+        "inc_1001",
+        "apex logistics"
+      ],
+      "no_foreign_incident_cites": true,
+      "allowed_incident_cites": [
+        "inc_20006",
+        "inc_20051",
+        "inc_20096"
+      ]
+    }
+  ]
+}

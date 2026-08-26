@@ -1,0 +1,2387 @@
+{
+  "generated_at": "2026-08-26T08:36:55.653606+00:00",
+  "model": "gpt-5",
+  "agent_model": "gpt-5-mini",
+  "reasoning_effort": "low",
+  "max_agent_turns": 10,
+  "schema_in_prompt": true,
+  "mode": "informed",
+  "reasoner": "OpenAIReasoningModel",
+  "vector_footprint": {
+    "adaptive_vector_count": 618,
+    "rag_vector_count": 5424,
+    "adaptive_over_rag": 0.1139
+  },
+  "max_elapsed_ms": 90000,
+  "cases": {
+    "simple_lookup": {
+      "id": "simple_apex_tier",
+      "class": "simple_lookup",
+      "question": "What is customer cust_007's current subscription tier?",
+      "gold_answer": "Apex Logistics (cust_007) began failing production deployments after migration mig_auth_sso (2024-05-10) changed the SSO issuer from https://auth-v2 (see customer record for tier).",
+      "why": "ID is in the question. RAG is the fast path; MARE should match accuracy with higher citation precision. Blind mode must discover the customer collection via the navigation index.",
+      "rag": {
+        "session_id": "rag_5df905cd1150",
+        "engine_status": "complete",
+        "stop_reason": "rag_topk",
+        "answer": "Enterprise [customers cust_007]",
+        "hypothesis": "conventional RAG top-k",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_017",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_037",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_003",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_047",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_008",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_027",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_046",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 1033,
+        "elapsed_ms": 3932.54062498454,
+        "agent_turns": 0,
+        "tool_calls": 0,
+        "llm_latency_ms": 0,
+        "mongo_latency_ms": 0,
+        "router_recommendation": null,
+        "evidence": {
+          "recall": 1.0,
+          "precision": 0.125,
+          "hit": [
+            "customers:cust_007"
+          ],
+          "missed": [],
+          "extra": [
+            "customers:cust_003",
+            "customers:cust_008",
+            "customers:cust_017",
+            "customers:cust_027",
+            "customers:cust_037",
+            "customers:cust_046",
+            "customers:cust_047"
+          ],
+          "gold_count": 1,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "enterprise"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive": {
+        "session_id": "sess_f38156ffe9c6",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "cust_007 is on the enterprise subscription tier (mare_demo.customers:cust_007).",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "cust_007 subscription_tier is enterprise",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 8921,
+        "elapsed_ms": 8543.01070800284,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 8017.945291037904,
+        "mongo_latency_ms": 303.918750025332,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_007"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 1,
+          "cited_count": 1
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "enterprise"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_blind": {
+        "session_id": "sess_3da99b30347e",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "enterprise (mare_demo.customers:cust_007)",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "cust_007 subscription_tier is enterprise",
+            "status": "supported",
+            "confidence": 0.86,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 11735,
+        "elapsed_ms": 8990.71895799716,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 8420.710373990005,
+        "mongo_latency_ms": 346.3601249968633,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_007"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 1,
+          "cited_count": 1
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "enterprise"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_informed": {
+        "session_id": "sess_f38156ffe9c6",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "cust_007 is on the enterprise subscription tier (mare_demo.customers:cust_007).",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "cust_007 subscription_tier is enterprise",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 8921,
+        "elapsed_ms": 8543.01070800284,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 8017.945291037904,
+        "mongo_latency_ms": 303.918750025332,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_007"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 1,
+          "cited_count": 1
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "enterprise"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      }
+    },
+    "multihop": {
+      "id": "mh_auth_sso",
+      "class": "complex_multihop",
+      "question": "Why did customer Apex Logistics (cust_007) begin experiencing deployment failures after migration mig_auth_sso, and what evidence supports the most likely root cause?",
+      "gold_answer": "Apex Logistics (cust_007) began failing production deployments after migration mig_auth_sso (2024-05-10) changed the SSO issuer from https://auth-v2.apex.io to https://auth-v3.apex.io. Deployments dep_apex_fail_1 and dep_apex_fail_2 failed with AUTH_401. Logs show jwt issuer mismatch: expected auth-v3, got auth-v2. Ticket tkt_1001 and incident inc_1001 corroborate authentication failures after the migration.",
+      "why": "The question names cust_007 and mig_auth_sso, so Top-K can scoop the whole story in one shot. This is RAG's home turf.",
+      "rag": {
+        "session_id": "rag_27d8a84beb17",
+        "engine_status": "complete",
+        "stop_reason": "rag_topk",
+        "answer": "Most likely root cause\n- A stale AUTH_ISSUER configuration still pointing to https://auth-v2.apex.io after the SSO cutover to https://auth-v3.apex.io, causing JWT issuer mismatches and 401s, particularly on the deployer. [incidents inc_1001], [migrations mig_auth_sso], [logs log_1002]\n\nEvidence\n- Migration required updating AUTH_ISSUER to https://auth-v3.apex.io; legacy issuer would reject tokens. [migrations mig_auth_sso]\n- Failures started immediately after the SSO migration with AUTH_401 errors. [tickets tkt_1001], [deployments dep_apex_fail_1], [deployments dep_apex_fail_2]\n- Auth-service log shows issuer mismatch: expected v3, got v2. [logs log_1001]\n- Deployer log shows token validation attempted against AUTH_ISSUER https://auth-v2.apex.io, indicating stale config on the deployer. [logs log_1002]\n- Incident record identifies root cause as stale AUTH_ISSUER still pointing at auth-v2 after the issuer cutover. [incidents inc_1001]",
+        "hypothesis": "conventional RAG top-k",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "tickets",
+            "document_id": "tkt_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_quilt_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1002",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1001",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 2024,
+        "elapsed_ms": 13534.038667014102,
+        "agent_turns": 0,
+        "tool_calls": 0,
+        "llm_latency_ms": 0,
+        "mongo_latency_ms": 0,
+        "router_recommendation": null,
+        "evidence": {
+          "recall": 0.875,
+          "precision": 0.875,
+          "hit": [
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "incidents:inc_1001",
+            "logs:log_1001",
+            "logs:log_1002",
+            "migrations:mig_auth_sso",
+            "tickets:tkt_1001"
+          ],
+          "missed": [
+            "customers:cust_007"
+          ],
+          "extra": [
+            "deployments:dep_quilt_1"
+          ],
+          "gold_count": 8,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "issuer",
+            "auth_401",
+            "auth-v3",
+            "mig_auth_sso"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive": {
+        "session_id": "sess_572457918d4b",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause\nAfter mig_auth_sso, the SSO issuer changed to https://auth-v3.apex.io, but Apex Logistics continued using the old issuer (https://auth-v2.apex.io) in clients/service accounts, causing JWT issuer mismatches and 401s during deployments (mare_demo.migrations:mig_auth_sso).\n\nEvidence\n- Migration notes required updating AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io; legacy issuer would reject tokens (mare_demo.migrations:mig_auth_sso).\n- Immediately after migration, prod deployments failed with AUTH_401 errors tied to mig_auth_sso:\n  - dep_apex_fail_1: \u201ctoken validation failed: unauthorized issuer\u201d in auth-service (mare_demo.deployments:dep_apex_fail_1).\n  - dep_apex_fail_2: \u201cauth-service returned 401 during rollout\u201d for billing-worker (mare_demo.deployments:dep_apex_fail_2).\n- Logs show explicit issuer mismatch and continued use of v2:\n  - \u201cjwt issuer mismatch: expected https://auth-v3.apex.io, got https://auth-v2.apex.io\u201d during dep_apex_fail_1 (mare_demo.logs:log_1001).\n  - \u201ctoken validation failed for deployer service account against AUTH_ISSUER https://auth-v2.apex.io\u201d during dep_apex_fail_2 (mare_demo.logs:log_1002).\n\nConclusion\nDeployment failures began because not all components updated AUTH_ISSUER to the new v3 issuer after mig_auth_sso, leading to token validation failures (AUTH_401) during rollout (mare_demo.migrations:mig_auth_sso; mare_demo.deployments:dep_apex_fail_1; mare_demo.deployments:dep_apex_fail_2; mare_demo.logs:log_1001; mare_demo.logs:log_1002).",
+        "hypothesis": "",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1002",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 3,
+        "tokens_consumed": 44057,
+        "elapsed_ms": 34271.99125001789,
+        "agent_turns": 6,
+        "tool_calls": 5,
+        "llm_latency_ms": 33024.814083997626,
+        "mongo_latency_ms": 914.0848749666475,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 0.625,
+          "precision": 1.0,
+          "hit": [
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "logs:log_1001",
+            "logs:log_1002",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "customers:cust_007",
+            "incidents:inc_1001",
+            "tickets:tkt_1001"
+          ],
+          "extra": [],
+          "gold_count": 8,
+          "cited_count": 5
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "issuer",
+            "auth_401",
+            "auth-v3",
+            "mig_auth_sso"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_blind": {
+        "session_id": "sess_3ee0be94e08e",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause\n- After mig_auth_sso, the SSO issuer changed to https://auth-v3.apex.io, but Apex Logistics continued using the old issuer https://auth-v2.apex.io, causing JWT validation to fail with AUTH_401 during deployment of auth-service.\n\nEvidence\n- Migration required clients to update AUTH_ISSUER to https://auth-v3.apex.io and warned the legacy issuer would reject tokens (mare_demo.migrations:mig_auth_sso).\n- The first post-migration prod deployment failed with AUTH_401 and \u201ctoken validation failed: unauthorized issuer,\u201d and it\u2019s linked to mig_auth_sso (mare_demo.deployments:dep_apex_fail_1).\n- Auth-service error log from that failed deployment shows \u201cjwt issuer mismatch: expected https://auth-v3.apex.io, got https://auth-v2.apex.io\u201d (mare_demo.logs:log_1001).",
+        "hypothesis": "",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_005",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0114",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0350",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0369",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_02324",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_00375",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_03595",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_02500",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_03642",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_01963",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_01052",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_03087",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_00790",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_n_03922",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 22528,
+        "elapsed_ms": 18593.461417010985,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 17892.133042012574,
+        "mongo_latency_ms": 482.7489999879617,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 0.375,
+          "precision": 0.15,
+          "hit": [
+            "deployments:dep_apex_fail_1",
+            "logs:log_1001",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "customers:cust_007",
+            "deployments:dep_apex_fail_2",
+            "incidents:inc_1001",
+            "logs:log_1002",
+            "tickets:tkt_1001"
+          ],
+          "extra": [
+            "deployments:dep_n_0025",
+            "deployments:dep_n_0040",
+            "deployments:dep_n_0114",
+            "deployments:dep_n_0350",
+            "deployments:dep_n_0369",
+            "logs:log_n_00375",
+            "logs:log_n_00790",
+            "logs:log_n_01052",
+            "logs:log_n_01963",
+            "logs:log_n_02324",
+            "logs:log_n_02500",
+            "logs:log_n_03087",
+            "logs:log_n_03595",
+            "logs:log_n_03642",
+            "logs:log_n_03922",
+            "migrations:mig_n_004",
+            "migrations:mig_n_005"
+          ],
+          "gold_count": 8,
+          "cited_count": 20
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "issuer",
+            "auth_401",
+            "auth-v3",
+            "mig_auth_sso"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_informed": {
+        "session_id": "sess_572457918d4b",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause\nAfter mig_auth_sso, the SSO issuer changed to https://auth-v3.apex.io, but Apex Logistics continued using the old issuer (https://auth-v2.apex.io) in clients/service accounts, causing JWT issuer mismatches and 401s during deployments (mare_demo.migrations:mig_auth_sso).\n\nEvidence\n- Migration notes required updating AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io; legacy issuer would reject tokens (mare_demo.migrations:mig_auth_sso).\n- Immediately after migration, prod deployments failed with AUTH_401 errors tied to mig_auth_sso:\n  - dep_apex_fail_1: \u201ctoken validation failed: unauthorized issuer\u201d in auth-service (mare_demo.deployments:dep_apex_fail_1).\n  - dep_apex_fail_2: \u201cauth-service returned 401 during rollout\u201d for billing-worker (mare_demo.deployments:dep_apex_fail_2).\n- Logs show explicit issuer mismatch and continued use of v2:\n  - \u201cjwt issuer mismatch: expected https://auth-v3.apex.io, got https://auth-v2.apex.io\u201d during dep_apex_fail_1 (mare_demo.logs:log_1001).\n  - \u201ctoken validation failed for deployer service account against AUTH_ISSUER https://auth-v2.apex.io\u201d during dep_apex_fail_2 (mare_demo.logs:log_1002).\n\nConclusion\nDeployment failures began because not all components updated AUTH_ISSUER to the new v3 issuer after mig_auth_sso, leading to token validation failures (AUTH_401) during rollout (mare_demo.migrations:mig_auth_sso; mare_demo.deployments:dep_apex_fail_1; mare_demo.deployments:dep_apex_fail_2; mare_demo.logs:log_1001; mare_demo.logs:log_1002).",
+        "hypothesis": "",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "logs",
+            "document_id": "log_1002",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 3,
+        "tokens_consumed": 44057,
+        "elapsed_ms": 34271.99125001789,
+        "agent_turns": 6,
+        "tool_calls": 5,
+        "llm_latency_ms": 33024.814083997626,
+        "mongo_latency_ms": 914.0848749666475,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 0.625,
+          "precision": 1.0,
+          "hit": [
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "logs:log_1001",
+            "logs:log_1002",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "customers:cust_007",
+            "incidents:inc_1001",
+            "tickets:tkt_1001"
+          ],
+          "extra": [],
+          "gold_count": 8,
+          "cited_count": 5
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "issuer",
+            "auth_401",
+            "auth-v3",
+            "mig_auth_sso"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      }
+    },
+    "bridge": {
+      "id": "bridge_elena_may_deploys",
+      "class": "bridge",
+      "question": "An enterprise customer in us-east-1 whose account manager is Elena Rossi started failing production deployments in May 2024. What is the most likely root cause?",
+      "gold_answer": "The customer is Apex Logistics (cust_007). After migration mig_auth_sso (2024-05-10) changed AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io, production deployments dep_apex_fail_1 and dep_apex_fail_2 failed with AUTH_401 (unauthorized / jwt issuer mismatch).",
+      "why": "The question never says Apex, cust_007, AUTH_401, or SSO. Correct requires both identifying the customer and the SSO issuer root cause. MARE must hop via navigation (related_nodes), not a single filter.",
+      "rag": {
+        "session_id": "rag_ff8a082bc823",
+        "engine_status": "complete",
+        "stop_reason": "rag_topk",
+        "answer": "SSO migration causing authentication failures (AUTH_401) during deploys. [tkt_1001]",
+        "hypothesis": "conventional RAG top-k",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "tickets",
+            "document_id": "tkt_1001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0157",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0076",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0109",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0154",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_rw_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0314",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0130",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 1560,
+        "elapsed_ms": 8620.416707999539,
+        "agent_turns": 0,
+        "tool_calls": 0,
+        "llm_latency_ms": 0,
+        "mongo_latency_ms": 0,
+        "router_recommendation": null,
+        "evidence": {
+          "recall": 0.125,
+          "precision": 0.125,
+          "hit": [
+            "tickets:tkt_1001"
+          ],
+          "missed": [
+            "customers:cust_007",
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "incidents:inc_1001",
+            "logs:log_1001",
+            "logs:log_1002",
+            "migrations:mig_auth_sso"
+          ],
+          "extra": [
+            "deployments:dep_n_0076",
+            "deployments:dep_n_0109",
+            "deployments:dep_n_0130",
+            "deployments:dep_n_0154",
+            "deployments:dep_n_0157",
+            "deployments:dep_n_0314",
+            "deployments:dep_rw_1"
+          ],
+          "gold_count": 8,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": false,
+          "matched_all": [],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [
+            {
+              "needles": [
+                "cust_007",
+                "apex"
+              ],
+              "matched": [],
+              "ok": false
+            },
+            {
+              "needles": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "matched": [
+                "auth_401",
+                "sso"
+              ],
+              "ok": true
+            }
+          ],
+          "entity_found": false,
+          "cause_found": true
+        }
+      },
+      "adaptive": {
+        "session_id": "sess_53d04e982198",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause: the SSO issuer change in migration mig_auth_sso on 2024-05-10 updated AUTH_ISSUER to https://auth-v3.apex.io, but the customer remained configured with the legacy issuer https://auth-v2.apex.io, causing token validation to fail with AUTH_401 \u201cunauthorized issuer\u201d during subsequent prod rollouts on May 11\u201312, 2024 (mare_demo.migrations:mig_auth_sso; mare_demo.deployments:dep_apex_fail_1; mare_demo.deployments:dep_apex_fail_2; mare_demo.customers:cust_007).",
+        "hypothesis": "Migration mig_auth_sso updated AUTH_ISSUER; subsequent prod deployments failed with AUTH_401 and logs saying \"unauthorized issuer\", linking the migration to the failed rollouts.",
+        "claims": [
+          {
+            "claim_id": "c1",
+            "claim": "Customer Apex Logistics (cust_007) is managed by account manager Elena Rossi and is in us-east-1.",
+            "status": "supported",
+            "confidence": 0.85,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c2",
+            "claim": "Migration mig_auth_sso (2024-05-10) changed AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io and warned clients must update AUTH_ISSUER or tokens will be rejected.",
+            "status": "supported",
+            "confidence": 0.95,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c3",
+            "claim": "Two production deployments in May 2024 failed with error_code AUTH_401 and logs stating token validation failed / unauthorized issuer; both reference migration_id mig_auth_sso.",
+            "status": "supported",
+            "confidence": 0.95,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0114",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0350",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0369",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0355",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0295",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_005",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 3,
+        "tokens_consumed": 84141,
+        "elapsed_ms": 30375.787166005466,
+        "agent_turns": 8,
+        "tool_calls": 7,
+        "llm_latency_ms": 28847.945793066174,
+        "mongo_latency_ms": 1085.0520419771783,
+        "router_recommendation": "semantic",
+        "evidence": {
+          "recall": 0.5,
+          "precision": 0.308,
+          "hit": [
+            "customers:cust_007",
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "incidents:inc_1001",
+            "logs:log_1001",
+            "logs:log_1002",
+            "tickets:tkt_1001"
+          ],
+          "extra": [
+            "deployments:dep_n_0025",
+            "deployments:dep_n_0040",
+            "deployments:dep_n_0114",
+            "deployments:dep_n_0295",
+            "deployments:dep_n_0350",
+            "deployments:dep_n_0355",
+            "deployments:dep_n_0369",
+            "migrations:mig_n_004",
+            "migrations:mig_n_005"
+          ],
+          "gold_count": 8,
+          "cited_count": 13
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [
+            {
+              "needles": [
+                "cust_007",
+                "apex"
+              ],
+              "matched": [
+                "cust_007",
+                "apex"
+              ],
+              "ok": true
+            },
+            {
+              "needles": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "matched": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "ok": true
+            }
+          ],
+          "entity_found": true,
+          "cause_found": true
+        }
+      },
+      "adaptive_blind": {
+        "session_id": "sess_525d238817eb",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause: Following the 2024-05-10 SSO platform migration that changed the required AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io, Apex Logistics (enterprise, us-east-1, AM Elena Rossi) did not update their client config and continued using the old issuer, leading to token validation failures (\u201cunauthorized issuer\u201d) and AUTH_401 errors in production deployments starting May 11\u201312, 2024 (mare_demo.customers:cust_007; mare_demo.migrations:mig_auth_sso; mare_demo.deployments:dep_apex_fail_1; mare_demo.deployments:dep_apex_fail_2).",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "c1",
+            "claim": "Platform migration changed AUTH_ISSUER and required client config update",
+            "status": "supported",
+            "confidence": 0.95,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c2",
+            "claim": "Deployments failed with AUTH_401 because tokens were rejected after migration",
+            "status": "supported",
+            "confidence": 0.93,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c3",
+            "claim": "Affected customer is cust_007 (Apex Logistics) managed by Elena Rossi in us-east-1",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_001",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_030",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_005",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 4,
+        "tokens_consumed": 104975,
+        "elapsed_ms": 38681.07483300264,
+        "agent_turns": 9,
+        "tool_calls": 8,
+        "llm_latency_ms": 35831.869623973034,
+        "mongo_latency_ms": 2340.0136660202406,
+        "router_recommendation": "semantic",
+        "evidence": {
+          "recall": 0.5,
+          "precision": 0.5,
+          "hit": [
+            "customers:cust_007",
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "incidents:inc_1001",
+            "logs:log_1001",
+            "logs:log_1002",
+            "tickets:tkt_1001"
+          ],
+          "extra": [
+            "customers:cust_001",
+            "customers:cust_030",
+            "migrations:mig_n_004",
+            "migrations:mig_n_005"
+          ],
+          "gold_count": 8,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [
+            {
+              "needles": [
+                "cust_007",
+                "apex"
+              ],
+              "matched": [
+                "cust_007",
+                "apex"
+              ],
+              "ok": true
+            },
+            {
+              "needles": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "matched": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "ok": true
+            }
+          ],
+          "entity_found": true,
+          "cause_found": true
+        }
+      },
+      "adaptive_informed": {
+        "session_id": "sess_53d04e982198",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "Most likely root cause: the SSO issuer change in migration mig_auth_sso on 2024-05-10 updated AUTH_ISSUER to https://auth-v3.apex.io, but the customer remained configured with the legacy issuer https://auth-v2.apex.io, causing token validation to fail with AUTH_401 \u201cunauthorized issuer\u201d during subsequent prod rollouts on May 11\u201312, 2024 (mare_demo.migrations:mig_auth_sso; mare_demo.deployments:dep_apex_fail_1; mare_demo.deployments:dep_apex_fail_2; mare_demo.customers:cust_007).",
+        "hypothesis": "Migration mig_auth_sso updated AUTH_ISSUER; subsequent prod deployments failed with AUTH_401 and logs saying \"unauthorized issuer\", linking the migration to the failed rollouts.",
+        "claims": [
+          {
+            "claim_id": "c1",
+            "claim": "Customer Apex Logistics (cust_007) is managed by account manager Elena Rossi and is in us-east-1.",
+            "status": "supported",
+            "confidence": 0.85,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c2",
+            "claim": "Migration mig_auth_sso (2024-05-10) changed AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io and warned clients must update AUTH_ISSUER or tokens will be rejected.",
+            "status": "supported",
+            "confidence": 0.95,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          },
+          {
+            "claim_id": "c3",
+            "claim": "Two production deployments in May 2024 failed with error_code AUTH_401 and logs stating token validation failed / unauthorized issuer; both reference migration_id mig_auth_sso.",
+            "status": "supported",
+            "confidence": 0.95,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_1",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_apex_fail_2",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_auth_sso",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0114",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0350",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0369",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0355",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "deployments",
+            "document_id": "dep_n_0295",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "migrations",
+            "document_id": "mig_n_005",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 3,
+        "tokens_consumed": 84141,
+        "elapsed_ms": 30375.787166005466,
+        "agent_turns": 8,
+        "tool_calls": 7,
+        "llm_latency_ms": 28847.945793066174,
+        "mongo_latency_ms": 1085.0520419771783,
+        "router_recommendation": "semantic",
+        "evidence": {
+          "recall": 0.5,
+          "precision": 0.308,
+          "hit": [
+            "customers:cust_007",
+            "deployments:dep_apex_fail_1",
+            "deployments:dep_apex_fail_2",
+            "migrations:mig_auth_sso"
+          ],
+          "missed": [
+            "incidents:inc_1001",
+            "logs:log_1001",
+            "logs:log_1002",
+            "tickets:tkt_1001"
+          ],
+          "extra": [
+            "deployments:dep_n_0025",
+            "deployments:dep_n_0040",
+            "deployments:dep_n_0114",
+            "deployments:dep_n_0295",
+            "deployments:dep_n_0350",
+            "deployments:dep_n_0355",
+            "deployments:dep_n_0369",
+            "migrations:mig_n_004",
+            "migrations:mig_n_005"
+          ],
+          "gold_count": 8,
+          "cited_count": 13
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [
+            {
+              "needles": [
+                "cust_007",
+                "apex"
+              ],
+              "matched": [
+                "cust_007",
+                "apex"
+              ],
+              "ok": true
+            },
+            {
+              "needles": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "matched": [
+                "auth_401",
+                "issuer",
+                "mig_auth_sso",
+                "sso"
+              ],
+              "ok": true
+            }
+          ],
+          "entity_found": true,
+          "cause_found": true
+        }
+      }
+    },
+    "aggregation": {
+      "id": "agg_enterprise_count",
+      "class": "aggregation",
+      "question": "How many customers in mare_demo are currently on the enterprise subscription tier?",
+      "gold_answer": "18 customers are on the enterprise subscription tier.",
+      "why": "The correct answer is a full-collection count. RAG can only count what fits in Top-K chunks; MARE can run a structured Mongo query after discovering the collection from the navigation index.",
+      "rag": {
+        "session_id": "rag_c60028c5423d",
+        "engine_status": "complete",
+        "stop_reason": "rag_topk",
+        "answer": "8 (sources: cust_018, cust_004, cust_005, cust_041, cust_025, cust_037, cust_045, cust_046)",
+        "hypothesis": "conventional RAG top-k",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_018",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_005",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_041",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_037",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_045",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_046",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 1408,
+        "elapsed_ms": 8168.358583003283,
+        "agent_turns": 0,
+        "tool_calls": 0,
+        "llm_latency_ms": 0,
+        "mongo_latency_ms": 0,
+        "router_recommendation": null,
+        "evidence": {
+          "recall": 0.444,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_004",
+            "customers:cust_005",
+            "customers:cust_018",
+            "customers:cust_025",
+            "customers:cust_037",
+            "customers:cust_041",
+            "customers:cust_045",
+            "customers:cust_046"
+          ],
+          "missed": [
+            "customers:cust_002",
+            "customers:cust_007",
+            "customers:cust_012",
+            "customers:cust_015",
+            "customers:cust_017",
+            "customers:cust_019",
+            "customers:cust_021",
+            "customers:cust_022",
+            "customers:cust_031",
+            "customers:cust_040"
+          ],
+          "extra": [],
+          "gold_count": 18,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": false,
+          "matched_all": [],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive": {
+        "session_id": "sess_cefa33b3630e",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "18 (mare_demo.customers:cust_002, mare_demo.customers:cust_004, mare_demo.customers:cust_005, mare_demo.customers:cust_007, mare_demo.customers:cust_012, mare_demo.customers:cust_015, mare_demo.customers:cust_017, mare_demo.customers:cust_018, mare_demo.customers:cust_019, mare_demo.customers:cust_021, mare_demo.customers:cust_022, mare_demo.customers:cust_025, mare_demo.customers:cust_031, mare_demo.customers:cust_037, mare_demo.customers:cust_040, mare_demo.customers:cust_041, mare_demo.customers:cust_045, mare_demo.customers:cust_046)",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "Number of enterprise-tier customers is 18",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_002",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_005",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_012",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_015",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_017",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_018",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_019",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_021",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_022",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_031",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_037",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_041",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_045",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_046",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 13718,
+        "elapsed_ms": 17081.066834012745,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 16251.224957988597,
+        "mongo_latency_ms": 600.0057920173276,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_002",
+            "customers:cust_004",
+            "customers:cust_005",
+            "customers:cust_007",
+            "customers:cust_012",
+            "customers:cust_015",
+            "customers:cust_017",
+            "customers:cust_018",
+            "customers:cust_019",
+            "customers:cust_021",
+            "customers:cust_022",
+            "customers:cust_025",
+            "customers:cust_031",
+            "customers:cust_037",
+            "customers:cust_040",
+            "customers:cust_041",
+            "customers:cust_045",
+            "customers:cust_046"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 18,
+          "cited_count": 18
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [
+            "18"
+          ],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_blind": {
+        "session_id": "sess_d5e616d0ce8f",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "18 (mare_demo.customers:cust_002, mare_demo.customers:cust_004, mare_demo.customers:cust_005, mare_demo.customers:cust_007, mare_demo.customers:cust_012, mare_demo.customers:cust_015, mare_demo.customers:cust_017, mare_demo.customers:cust_018, mare_demo.customers:cust_019, mare_demo.customers:cust_021, mare_demo.customers:cust_022, mare_demo.customers:cust_025, mare_demo.customers:cust_031, mare_demo.customers:cust_037, mare_demo.customers:cust_040, mare_demo.customers:cust_041, mare_demo.customers:cust_045, mare_demo.customers:cust_046)",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "Count of customers with subscription_tier = 'enterprise'",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_002",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_005",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_012",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_015",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_017",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_018",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_019",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_021",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_022",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_031",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_037",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_041",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_045",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_046",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 13423,
+        "elapsed_ms": 15764.064832997974,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 15021.299708023435,
+        "mongo_latency_ms": 519.0345830051228,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_002",
+            "customers:cust_004",
+            "customers:cust_005",
+            "customers:cust_007",
+            "customers:cust_012",
+            "customers:cust_015",
+            "customers:cust_017",
+            "customers:cust_018",
+            "customers:cust_019",
+            "customers:cust_021",
+            "customers:cust_022",
+            "customers:cust_025",
+            "customers:cust_031",
+            "customers:cust_037",
+            "customers:cust_040",
+            "customers:cust_041",
+            "customers:cust_045",
+            "customers:cust_046"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 18,
+          "cited_count": 18
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [
+            "18"
+          ],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_informed": {
+        "session_id": "sess_cefa33b3630e",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "18 (mare_demo.customers:cust_002, mare_demo.customers:cust_004, mare_demo.customers:cust_005, mare_demo.customers:cust_007, mare_demo.customers:cust_012, mare_demo.customers:cust_015, mare_demo.customers:cust_017, mare_demo.customers:cust_018, mare_demo.customers:cust_019, mare_demo.customers:cust_021, mare_demo.customers:cust_022, mare_demo.customers:cust_025, mare_demo.customers:cust_031, mare_demo.customers:cust_037, mare_demo.customers:cust_040, mare_demo.customers:cust_041, mare_demo.customers:cust_045, mare_demo.customers:cust_046)",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "Number of enterprise-tier customers is 18",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_002",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_004",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_005",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_007",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_012",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_015",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_017",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_018",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_019",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_021",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_022",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_025",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_031",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_037",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_040",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_041",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_045",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "customers",
+            "document_id": "cust_046",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 13718,
+        "elapsed_ms": 17081.066834012745,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 16251.224957988597,
+        "mongo_latency_ms": 600.0057920173276,
+        "router_recommendation": "hybrid",
+        "evidence": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "hit": [
+            "customers:cust_002",
+            "customers:cust_004",
+            "customers:cust_005",
+            "customers:cust_007",
+            "customers:cust_012",
+            "customers:cust_015",
+            "customers:cust_017",
+            "customers:cust_018",
+            "customers:cust_019",
+            "customers:cust_021",
+            "customers:cust_022",
+            "customers:cust_025",
+            "customers:cust_031",
+            "customers:cust_037",
+            "customers:cust_040",
+            "customers:cust_041",
+            "customers:cust_045",
+            "customers:cust_046"
+          ],
+          "missed": [],
+          "extra": [],
+          "gold_count": 18,
+          "cited_count": 18
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [
+            "18"
+          ],
+          "matched_any": [],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      }
+    },
+    "negative": {
+      "id": "neg_cedar_april_incidents",
+      "class": "negative",
+      "question": "Did Cedar Systems (cust_004) have any incidents opened in April 2024?",
+      "gold_answer": "No. Cedar Systems (cust_004) has no incidents with opened_at in April 2024.",
+      "why": "Top-K always returns something. MARE can filter and return zero documents, which is the only way to ground a negative.",
+      "rag": {
+        "session_id": "rag_05d4c8038a50",
+        "engine_status": "complete",
+        "stop_reason": "rag_topk",
+        "answer": "No. The April 2024 incidents in the provided data are for other customers, not Cedar Systems (cust_004): inc_20044 (cust_030), inc_20026 (cust_030), inc_20014 (cust_047), and inc_20099 (cust_033). [inc_20044, inc_20026, inc_20014, inc_20099]",
+        "hypothesis": "conventional RAG top-k",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20044",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20042",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20014",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20099",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20026",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20057",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20049",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20132",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 1673,
+        "elapsed_ms": 9660.579416988185,
+        "agent_turns": 0,
+        "tool_calls": 0,
+        "llm_latency_ms": 0,
+        "mongo_latency_ms": 0,
+        "router_recommendation": null,
+        "evidence": {
+          "recall": null,
+          "precision": 0.0,
+          "hit": [],
+          "missed": [],
+          "extra": [
+            "incidents:inc_20014",
+            "incidents:inc_20026",
+            "incidents:inc_20042",
+            "incidents:inc_20044",
+            "incidents:inc_20049",
+            "incidents:inc_20057",
+            "incidents:inc_20099",
+            "incidents:inc_20132"
+          ],
+          "gold_count": 0,
+          "cited_count": 8
+        },
+        "answer_score": {
+          "correct": false,
+          "matched_all": [],
+          "matched_any": [
+            "no"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [
+            "incidents:inc_20044",
+            "incidents:inc_20042",
+            "incidents:inc_20014",
+            "incidents:inc_20099",
+            "incidents:inc_20026",
+            "incidents:inc_20057",
+            "incidents:inc_20049",
+            "incidents:inc_20132"
+          ],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive": {
+        "session_id": "sess_ca0063da1c80",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "No. In the provided records for Cedar Systems (cust_004), incidents were opened on 2024-01-29 (mare_demo.incidents:inc_20051), 2024-02-19 (mare_demo.incidents:inc_20006), and 2024-06-04 (mare_demo.incidents:inc_20096); none were opened in April 2024. This conclusion is limited to the evidence shown.",
+        "hypothesis": "",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20006",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20051",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20096",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 14193,
+        "elapsed_ms": 12325.048667000374,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 11780.379456991795,
+        "mongo_latency_ms": 321.9612499815412,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": null,
+          "precision": 0.0,
+          "hit": [],
+          "missed": [],
+          "extra": [
+            "incidents:inc_20006",
+            "incidents:inc_20051",
+            "incidents:inc_20096"
+          ],
+          "gold_count": 0,
+          "cited_count": 3
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "no",
+            "none"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_blind": {
+        "session_id": "sess_4c86fd72d698",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "No. Based on the provided incident records for cust_004, openings were on 2024-01-29 (mare_demo.incidents:inc_20051), 2024-02-19 (mare_demo.incidents:inc_20006), and 2024-06-04 (mare_demo.incidents:inc_20096)\u2014none in April 2024. If there are additional incidents not included in the provided evidence, I can\u2019t assess them.",
+        "hypothesis": "",
+        "claims": [
+          {
+            "claim_id": "C1",
+            "claim": "No incidents for cust_004 were opened in April 2024.",
+            "status": "supported",
+            "confidence": 0.9,
+            "supporting_sources": [],
+            "contradicting_sources": [],
+            "missing_information": [],
+            "material": true
+          }
+        ],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20006",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20051",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20096",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 14614,
+        "elapsed_ms": 13363.976125023328,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 12779.714123986196,
+        "mongo_latency_ms": 345.59762603021227,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": null,
+          "precision": 0.0,
+          "hit": [],
+          "missed": [],
+          "extra": [
+            "incidents:inc_20006",
+            "incidents:inc_20051",
+            "incidents:inc_20096"
+          ],
+          "gold_count": 0,
+          "cited_count": 3
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "no",
+            "none"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      },
+      "adaptive_informed": {
+        "session_id": "sess_ca0063da1c80",
+        "engine_status": "complete",
+        "stop_reason": "completed",
+        "answer": "No. In the provided records for Cedar Systems (cust_004), incidents were opened on 2024-01-29 (mare_demo.incidents:inc_20051), 2024-02-19 (mare_demo.incidents:inc_20006), and 2024-06-04 (mare_demo.incidents:inc_20096); none were opened in April 2024. This conclusion is limited to the evidence shown.",
+        "hypothesis": "",
+        "claims": [],
+        "citations": [
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20006",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20051",
+            "fields": []
+          },
+          {
+            "database": "mare_demo",
+            "collection": "incidents",
+            "document_id": "inc_20096",
+            "fields": []
+          }
+        ],
+        "retrieval_count": 1,
+        "tokens_consumed": 14193,
+        "elapsed_ms": 12325.048667000374,
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "llm_latency_ms": 11780.379456991795,
+        "mongo_latency_ms": 321.9612499815412,
+        "router_recommendation": "lexical",
+        "evidence": {
+          "recall": null,
+          "precision": 0.0,
+          "hit": [],
+          "missed": [],
+          "extra": [
+            "incidents:inc_20006",
+            "incidents:inc_20051",
+            "incidents:inc_20096"
+          ],
+          "gold_count": 0,
+          "cited_count": 3
+        },
+        "answer_score": {
+          "correct": true,
+          "matched_all": [],
+          "matched_any": [
+            "no",
+            "none"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null
+        }
+      }
+    }
+  }
+}
