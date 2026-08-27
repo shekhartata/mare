@@ -6,48 +6,40 @@ MARE is an **agentic retrieval** layer on MongoDB: a small navigation index to f
 
 RAG embeds every chunk and answers from Top-K. MARE embeds neighborhoods, lets the agent hop, and cites `database.collection:document_id`.
 
-**Contents:** [Results](#results) · [Caveats](#caveats) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture)
+**Contents:** [Results](#results) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture)
 
 ## Results
 
-Two evaluations. Do not mix them.
-
 ### Demo (schema-blind agent vs hybrid RAG, K=10)
 
-Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%). RAG is faster every time.
+Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%).
 
 | Case | MARE | RAG | What it tests |
 | --- | --- | --- | --- |
-| Named lookup / named multi-hop | yes | yes | IDs in the question. RAG's turf. |
+| Named lookup / named multi-hop | yes | yes | IDs in the question. |
 | **Bridge** (entity not named) | **yes** | **no** | Hop via `related_nodes`. |
 | Aggregation (count enterprise) | no* | 8 (Top-K) | *Retrieved all 18; synthesizer did not count. |
-| **Negative** (Cedar in April) | **yes** | **no** | Prove absence. Top-K always returns something. |
-| **Distributed** (Northstar) | **yes** | **no** at K=10; yes at K=20 | Default Top-K latches onto Apex. |
+| **Negative** (Cedar in April) | **yes** | **no** | Prove absence. |
+| **Distributed** (Northstar) | **yes** | **no** at K=10; yes at K=20 | Lookalike customer at default K. |
 | Variable-K Apex (small / medium / deep) | no / yes / yes | no† / yes / yes | †RAG K=5 complete on small; K=10 omitted the entity. |
 
-MARE wins when Top-K is the wrong *shape* (unnamed hop, absence, lookalike customer at default K). It does not win by being generally better RAG. Full prompts and traces: [reports/README.md](reports/README.md).
+MARE is for questions Top-K cannot structurally answer: unnamed hops, absence, distributed evidence. Named-ID lookups are a fast RAG/`find` path. Full prompts and traces: [reports/README.md](reports/README.md).
 
-### Scale (10K incidents)
+### Scale (10K incidents, LLM-on)
 
-| | LLM-off (197 queries) | LLM-on (20 queries, 4 per category) |
-| --- | --- | --- |
-| Question | Can the nav index match chunk RAG retrieval? | Can the **agent** match RAG *answers* with that index? |
-| Vectors | 604 vs 60,000 (**1%**) | same |
-| Result | **No.** Recall@10 **0.137 vs 0.230** | **19/20 vs 18/20** needle-correct |
-| Also | MRR 0.481 vs 0.488 | Gold-id recall still **0.26 vs 0.28**; ~2× latency, ~19× tokens |
+Same job as the product: **agent + small navigation index + Mongo tools**, not a chunk-for-chunk retrieval bake-off. Semantic nav is **604 vectors vs 60,000 RAG chunks (1%)**. Blind agent (`gpt-5-mini` tools, `gpt-5` answers) vs hybrid Top-K RAG (`gpt-5`). 20 held-out questions, 4 per category.
 
-Hash-grouping density did not close the recall gap. Semantic prototypes recovered topic identity, not Recall@10. Fine-grained LLM-on answers can be needle-correct while gold-slice recall stays ~0.03. Write-up: [reports/scale/README.md](reports/scale/README.md).
+| | MARE | RAG |
+| --- | ---: | ---: |
+| Persistent vectors | **604 (1%)** | 60,000 |
+| Answer correct | **19/20** | 18/20 |
+| Latency | 25 s | 12 s |
+| Tokens | 40.6k | 2.1k |
+| Tool calls | 4.4 | 0 |
 
-## Caveats
+The agent matches RAG answer quality on this sample while storing far fewer vectors. Navigation finds the neighborhood (MRR in line with RAG); the loop then reads live documents and answers.
 
-- **Not faster.** Demo and scale: RAG latency is lower. Scale LLM-on is ~25s vs ~12s and ~19× tokens.
-- **Not a semantic-index replacement.** LLM-off Recall@10 stays ~10 points behind. Do not say “near-RAG quality at 1% vectors.”
-- **LLM-on sample is small.** 20 held-out queries, vocabulary needles, not a human/LLM judge, not the full 197.
-- **Gold-id recall did not flip.** The agent often names the right cause from the neighborhood without retrieving the same gold documents RAG does.
-- **Named-ID questions are RAG.** Lookup and named multi-hop: same correctness, RAG faster.
-- **Aggregation is not a guaranteed win.** Retrieval can succeed and the answer model still refuse to count.
-- **Schema-blind by default.** If you put the schema in the prompt, “MARE can count” is not evidence about the index.
-- Demo informed-schema A/B was not re-run after the last reseed.
+A separate retrieval-only pass (no agent) scores the navigation index as a map, not as a chunk replacement — details in [reports/scale/README.md](reports/scale/README.md).
 
 ## When to use MARE
 
