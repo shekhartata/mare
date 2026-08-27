@@ -94,5 +94,8 @@ python scripts/run_comparison.py --only distributed
 python scripts/run_comparison.py --only vk
 python scripts/run_comparison.py --turns 10
 python scripts/run_comparison.py --rescore    # no LLM; rewrite markdown
-python scripts/run_comparison.py --rerun-rag  # force RAG after a reseed
 ```
+
+## Scale index (LLM-off)
+
+The 10K navigation layer is also scored as a **map** (ranked document ids, no agent): Recall@K, nDCG, MRR. That pass is not the product loop — it checks that neighborhoods are findable. Semantic prototypes: **604 vs 60,000** vectors, Recall@10 0.137 vs 0.230, MRR 0.481 vs 0.488. Density sweep and category breakout: [scale/README.md](scale/README.md).

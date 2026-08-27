@@ -12,7 +12,6 @@ from app.constants import (
     NAV_VECTOR_INDEX,
     RAG_LEXICAL_INDEX,
     RAG_VECTOR_INDEX,
-    RAW_LEXICAL_INDEX,
 )
 from app.models.schemas import ClusterCapabilities
 
@@ -114,6 +113,36 @@ def list_index_stats(coll: Collection) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def ensure_nav_and_rag_indexes(
+    nav,
+    chunks,
+    *,
+    auto_embed: bool = True,
+) -> dict[str, Any]:
+    """Create lexical + vector indexes on the given nav and chunk collections."""
+    create_lexical_index(
+        nav,
+        NAV_LEXICAL_INDEX,
+        extra_fields={
+            "node_type": {"type": "token"},
+            "parent_id": {"type": "token"},
+            "search_text": {"type": "string"},
+        },
+    )
+    create_lexical_index(chunks, RAG_LEXICAL_INDEX, extra_fields={"text": {"type": "string"}})
+    vector_ok = False
+    if auto_embed:
+        try:
+            create_auto_embed_index(
+                nav, NAV_VECTOR_INDEX, "search_text", ["tenant_id", "node_type"]
+            )
+            create_auto_embed_index(chunks, RAG_VECTOR_INDEX, "text", ["tenant_id", "collection"])
+            vector_ok = True
+        except Exception:
+            vector_ok = False
+    return {"vector_ok": vector_ok}
 
 
 def probe_capabilities(coll: Collection) -> ClusterCapabilities:

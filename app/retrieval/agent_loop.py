@@ -16,7 +16,7 @@ from typing import Any
 from openai import OpenAI
 
 from app.config import get_settings
-from app.constants import AGENT_DB, EVIDENCE_SESSIONS, RAW_DB
+from app.constants import EVIDENCE_SESSIONS, RAW_DB, is_nav_database
 from app.llm.base import ReasoningModel
 from app.llm.openai_model import OpenAIReasoningModel, chat_complete, usage_from_response
 from app.models.schemas import (
@@ -444,7 +444,7 @@ def _docs_from_tool_result(result: dict[str, Any]) -> list[RetrievedDocument]:
         doc_id = str(ref.get("document_id") or "")
         database = str(ref.get("database") or RAW_DB)
         collection = str(ref.get("collection") or "")
-        if not doc_id or database == AGENT_DB:
+        if not doc_id or is_nav_database(database):
             continue
         out.append(
             RetrievedDocument(
@@ -491,7 +491,7 @@ def _citations_from_docs(docs: list[RetrievedDocument]) -> list[MongoRef]:
     out: list[MongoRef] = []
     preferred = [d for d in docs if d.ref.database == RAW_DB] or docs
     for d in preferred:
-        if d.ref.database == AGENT_DB:
+        if is_nav_database(d.ref.database):
             continue
         if d.ref.collection == "unknown" or d.ref.document_id == "draft":
             continue
@@ -524,7 +524,7 @@ def _merge_citations(primary: list[MongoRef], extra: list[MongoRef]) -> list[Mon
     seen: set[str] = set()
     out: list[MongoRef] = []
     for ref in primary + extra:
-        if ref.database == AGENT_DB:
+        if is_nav_database(ref.database):
             continue
         key = f"{ref.collection}:{ref.document_id}"
         if key in seen:

@@ -20,10 +20,12 @@ def run_rag(
     tenant_id: str | None = None,
     top_k: int | None = None,
     method: str = "hybrid",
+    source_database: str | None = None,
 ) -> EvidenceSession:
     settings = get_settings()
     tenant_id = tenant_id or settings.tenant_id
     top_k = top_k or settings.rag_top_k
+    source_database = source_database or RAW_DB
     started = time.perf_counter()
     session_id = f"rag_{uuid.uuid4().hex[:12]}"
     coll = rag_db()[RAG_CHUNKS]
@@ -70,7 +72,7 @@ def run_rag(
     )
     citations = [
         MongoRef(
-            database=RAW_DB,
+            database=source_database,
             collection=str(h.get("collection") or ""),
             document_id=str(h.get("source_id") or ""),
         )
@@ -88,7 +90,7 @@ def run_rag(
         seen.add(key)
         retrieved_docs.append(
             {
-                "database": RAW_DB,
+                "database": source_database,
                 "collection": coll,
                 "document_id": sid,
                 "text": str(h.get("text") or ""),

@@ -12,6 +12,11 @@ from app.constants import (
     RAW_COLLECTIONS,
     RAW_DB,
     RAW_LEXICAL_INDEX,
+    SCALE_COLLECTION,
+    SCALE_RAW_DB,
+    is_scale_database,
+    scale_agent_db_name,
+    scale_rag_db_name,
 )
 from app.llm import get_embedding_model
 from app.models.schemas import SearchMethod
@@ -24,12 +29,29 @@ from app.search.router import recommend_method
 from app.search.structured import query_documents, read_documents
 from app.search.vector import semantic_search
 
-ALLOWED_DBS = {RAW_DB, AGENT_DB, RAG_DB}
+ALLOWED_DBS = {RAW_DB, AGENT_DB, RAG_DB, SCALE_RAW_DB}
+
+
+def allowed_databases() -> set[str]:
+    dbs = set(ALLOWED_DBS)
+    from app.constants import SCALE_DENSITIES, SCALE_SLICES
+
+    for n in SCALE_SLICES:
+        dbs.add(scale_agent_db_name(n))
+        dbs.add(scale_rag_db_name(n))
+        for density in SCALE_DENSITIES:
+            dbs.add(scale_agent_db_name(n, density))
+            dbs.add(scale_agent_db_name(n, density, "semantic"))
+    return dbs
 
 
 def list_databases() -> list[str]:
     names = get_client().list_database_names()
-    return [n for n in names if n in ALLOWED_DBS or n.startswith("mare")]
+    return [
+        n
+        for n in names
+        if n in allowed_databases() or n.startswith("mare") or is_scale_database(n)
+    ]
 
 
 def list_collections(database: str) -> list[str]:
@@ -42,7 +64,9 @@ def get_node(node_id: str, tenant_id: str | None = None) -> dict[str, Any] | Non
     return agent_db()[NAV_NODES].find_one(inject_tenant({"_id": node_id}, tenant_id))
 
 
-def get_children(node_id: str, tenant_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+def get_children(
+    node_id: str, tenant_id: str | None = None, limit: int = 50
+) -> list[dict[str, Any]]:
     tenant_id = tenant_id or get_settings().tenant_id
     return list(
         agent_db()[NAV_NODES]
@@ -184,9 +208,12 @@ def _split_ns(namespace: str) -> tuple[str, str]:
     _guard_db(database)
     if database == RAW_DB and collection not in RAW_COLLECTIONS:
         raise ValueError(f"collection {collection} is not in the allowed raw set")
+    if database == SCALE_RAW_DB and collection != SCALE_COLLECTION:
+        raise ValueError(f"scale collection {collection} is not allowed")
     return database, collection
 
 
 def _guard_db(database: str) -> None:
-    if database not in ALLOWED_DBS:
-        raise ValueError(f"database {database} is not reachable from MARE")
+    if database in allowed_databases() or is_scale_database(database):
+        return
+    raise ValueError(f"database {database} is not reachable from MARE")

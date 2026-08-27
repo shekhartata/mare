@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -14,6 +16,8 @@ from app.constants import AGENT_DB, RAG_DB, RAW_DB
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 _client: MongoClient | None = None
+_agent_db_override: ContextVar[str | None] = ContextVar("agent_db_override", default=None)
+_rag_db_override: ContextVar[str | None] = ContextVar("rag_db_override", default=None)
 
 
 def get_client(settings: Settings | None = None) -> MongoClient:
@@ -38,11 +42,29 @@ def raw_db(client: MongoClient | None = None) -> Database:
 
 
 def agent_db(client: MongoClient | None = None) -> Database:
-    return (client or get_client())[AGENT_DB]
+    name = _agent_db_override.get() or AGENT_DB
+    return (client or get_client())[name]
 
 
 def rag_db(client: MongoClient | None = None) -> Database:
-    return (client or get_client())[RAG_DB]
+    name = _rag_db_override.get() or RAG_DB
+    return (client or get_client())[name]
+
+
+@contextmanager
+def override_namespaces(
+    *, agent: str | None = None, rag: str | None = None
+) -> Iterator[None]:
+    tokens: list[tuple[ContextVar[str | None], object]] = []
+    if agent is not None:
+        tokens.append((_agent_db_override, _agent_db_override.set(agent)))
+    if rag is not None:
+        tokens.append((_rag_db_override, _rag_db_override.set(rag)))
+    try:
+        yield
+    finally:
+        for var, token in reversed(tokens):
+            var.reset(token)  # type: ignore[arg-type]
 
 
 def collection(db_name: str, name: str, client: MongoClient | None = None) -> Collection:

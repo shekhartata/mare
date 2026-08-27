@@ -8,7 +8,7 @@ from pymongo.collection import Collection
 
 from app.config import get_settings
 
-SKIP_FIELDS = {"_id", "tenant_id", "embedding"}
+SKIP_FIELDS = {"_id", "tenant_id", "embedding", "topic_id", "tier", "family", "query_lexicon"}
 
 
 def discover_schema(coll: Collection, sample_size: int | None = None) -> dict[str, Any]:

@@ -1,0 +1,60 @@
+{
+  "n": 10000,
+  "strategy": "topical",
+  "density": 100,
+  "chunk_size": 512,
+  "chunk_overlap": 51,
+  "nav_build": {
+    "nodes": 418,
+    "database": 1,
+    "collections": 1,
+    "database_name": "mare_scale",
+    "agent_db": "_agent_scale_10000",
+    "grouping_strategy": "topical",
+    "target_docs_per_group": 100
+  },
+  "nav_build_ms": 2185.9,
+  "rag_chunks": 60000,
+  "rag_build_ms": 11167.1,
+  "index_wait_ms": 180654.7,
+  "indexes": {
+    "nav": {
+      "nav_lexical": "ready",
+      "nav_vector": "ready"
+    },
+    "rag": {
+      "rag_lexical": "ready",
+      "rag_vector": "ready"
+    },
+    "vector_ok": true
+  },
+  "embedding_tokens_est": {
+    "mare_nav": 78471,
+    "rag_chunks": 6890089
+  },
+  "footprint": {
+    "mare_persistent_vectors": 418,
+    "rag_persistent_vectors": 60000,
+    "vector_ratio": 0.007,
+    "mare_index_bytes_est": 1712128,
+    "rag_index_bytes_est": 245760000,
+    "index_bytes_ratio_est": 0.007,
+    "nav_storage": {
+      "name": "navigation_nodes",
+      "count": 418,
+      "size": 1462973,
+      "storageSize": 339968,
+      "totalIndexSize": 32768,
+      "avgObjSize": 3499
+    },
+    "rag_storage": {
+      "name": "chunks",
+      "count": 60000,
+      "size": 37280356,
+      "storageSize": 6692864,
+      "totalIndexSize": 1671168,
+      "avgObjSize": 621
+    },
+    "note": "index_bytes_est is vectors \u00d7 dims \u00d7 4 bytes (unquantized). storageSize is measured collection bytes, not Atlas vector-index bytes."
+  }
+}
