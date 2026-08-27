@@ -6,7 +6,7 @@ MARE is an **agentic retrieval** layer on MongoDB: a small navigation index to f
 
 RAG embeds every chunk and answers from Top-K. MARE embeds neighborhoods, lets the agent hop, and cites `database.collection:document_id`.
 
-**Contents:** [Results](#results) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture)
+**Contents:** [Results](#results) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture) · [How a question is answered](#how-a-question-is-answered)
 
 ## Results
 
@@ -133,17 +133,25 @@ If autoEmbed is unavailable, MARE falls back to app-side embeddings. `scripts/pr
 
 ### How a question is answered
 
-1. A small router picks lexical / semantic / hybrid (`$rankFusion` or RRF) from the question shape.
-2. `search_information` runs that search **only on `navigation_nodes`**. Hits are groups and collections, with `important_fields` and **`related_nodes`** (same entity, other collections) — that is the hop.
-3. `retrieve_evidence` expands the node with `find` on the **source** collection. Full records, no extra vectors. Inside a group, `search_within` is lexical on the raw docs scoped by the node’s filter.
-4. Once a field name has been seen, `query_documents` can count, filter, or return zero rows. `submit_answer` cites `database.collection:document_id`.
+The LLM never sees embeddings or the navigation catalog. It sees the question and tool schemas, then discovers neighborhoods from tool results.
 
-```text
-query → hybrid on node search_text (hundreds of vectors)
-      → pick neighborhoods
-      → find / filter / read raw Mongo (no vectors)
-      → answer
+```mermaid
+flowchart TD
+    Q[Question] --> LLM["LLM sees question + tool schemas"]
+    LLM -->|"search_information"| RX{"Python regex: question shape?"}
+    RX -->|"ids / error codes"| LEX[lexical]
+    RX -->|"why / similar"| SEM[semantic]
+    RX -->|"both or default"| HYB[hybrid]
+    LEX --> AT["Atlas searches navigation_nodes"]
+    SEM --> AT
+    HYB --> AT
+    AT -->|"neighborhood cards"| LLM
+    LLM -->|"retrieve_evidence or query_documents"| MN["Mongo find on live docs"]
+    MN -->|"documents"| LLM
+    LLM -->|"enough evidence"| ANS["submit_answer → cited answer"]
 ```
+
+`search_information` runs **only on `navigation_nodes`**. Hits include `important_fields` and **`related_nodes`** (same entity, other collections) — that is the hop. `retrieve_evidence` then `find`s the **source** collection. No extra vectors. Once a field name has been seen, `query_documents` can count, filter, or return zero rows.
 
 | Database | Role |
 | --- | --- |
