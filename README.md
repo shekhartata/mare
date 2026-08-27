@@ -248,6 +248,16 @@ python scripts/run_benchmark.py
 python scripts/run_benchmark.py --class complex_multihop
 ```
 
+Scale / vector-efficiency (retrieval only, no LLM). Gold lives in `benchmarks/scale/gold_queries.json`. Do not put a quality-vs-vectors claim in this README until held-out measurements exist.
+
+```bash
+python scripts/seed_scale.py --n 10000
+python scripts/build_scale.py --n 10000 --strategy topical --density 100 --chunk-size 512
+python scripts/run_scale_retrieval.py --n 10000 --budget 10 --split heldout
+```
+
+Details: [reports/scale/README.md](reports/scale/README.md).
+
 ---
 
 ## Architecture

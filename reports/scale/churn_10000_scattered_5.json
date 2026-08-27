@@ -1,0 +1,19 @@
+{
+  "n": 10000,
+  "pct": 5.0,
+  "pattern": "scattered",
+  "density": 100,
+  "docs_changed": 500,
+  "mare": {
+    "vectors_invalidated": 268,
+    "vectors_regenerated": 268,
+    "update_amplification": 0.536,
+    "note": "Incremental rewrite of dirty group nodes; not a full hierarchy rebuild."
+  },
+  "rag": {
+    "vectors_invalidated": 3000,
+    "vectors_regenerated": 2012,
+    "update_amplification": 4.024,
+    "elapsed_ms": 829.8137499950826
+  }
+}

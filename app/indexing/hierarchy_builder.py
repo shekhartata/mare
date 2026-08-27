@@ -11,9 +11,10 @@ from app.indexing.grouping import customer_groups, customer_month_groups
 from app.indexing.schema_discovery import discover_schema
 from app.indexing.search_text import COLLECTION_TOPICS, compose_search_text
 from app.indexing.summaries import summarize_collection, summarize_database, summarize_group
+from app.indexing.topical_grouping import grouping_projection, topical_groups_from_docs
 from app.llm import get_reasoning_model
 from app.llm.heuristic import HeuristicReasoningModel
-from app.mongo.client import agent_db, get_client, raw_db
+from app.mongo.client import get_client
 
 
 def node_id(*parts: str) -> str:
@@ -26,14 +27,18 @@ def build_hierarchy(
     use_llm: bool = False,
     source_db: str = RAW_DB,
     collections: tuple[str, ...] | None = None,
+    agent_database: str = AGENT_DB,
+    grouping_strategy: str = "entity",
+    target_docs_per_group: int | None = None,
+    extra_match: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     settings = get_settings()
     tenant_id = tenant_id or settings.tenant_id
     collections = collections or settings.source_collections or RAW_COLLECTIONS
     model = get_reasoning_model() if use_llm else HeuristicReasoningModel()
     client = get_client()
-    rdb = raw_db(client)
-    nodes_coll: Collection = agent_db(client)[NAV_NODES]
+    rdb = client[source_db]
+    nodes_coll: Collection = client[agent_database][NAV_NODES]
     nodes_coll.delete_many({"tenant_id": tenant_id})
 
     now = datetime.now(UTC)
@@ -110,7 +115,16 @@ def build_hierarchy(
             )
         )
 
-        groups = list(_groups_for(rdb[name], tenant_id, name))
+        groups = list(
+            _groups_for(
+                rdb[name],
+                tenant_id,
+                name,
+                strategy=grouping_strategy,
+                target_docs_per_group=target_docs_per_group,
+                extra_match=extra_match,
+            )
+        )
         col_index = len(nodes) - 1
         nodes[col_index]["children_count"] = len(groups)
         for g in groups:
@@ -123,13 +137,14 @@ def build_hierarchy(
                     node_type="group",
                     name=g["name"],
                     description=f"Deterministic group over {name}",
-                    summary=summarize_group(g["name"], filt, g["document_count"]),
+                    summary=g.get("summary")
+                    or summarize_group(g["name"], filt, g["document_count"]),
                     parent_id=cid,
                     depth=2,
                     source={
                         "database": source_db,
                         "collection": name,
-                        "document_ids": [],
+                        "document_ids": list(g.get("document_ids") or []),
                         "filter": filt,
                         "pointer_type": "query",
                     },
@@ -146,7 +161,7 @@ def build_hierarchy(
                     },
                     children_count=0,
                     now=now,
-                    extra_terms=g.get("entities", []),
+                    extra_terms=g.get("extra_terms") or g.get("entities", []),
                 )
             )
 
@@ -197,16 +212,74 @@ def build_hierarchy(
         "database": 1,
         "collections": len(collections),
         "database_name": source_db,
-        "agent_db": AGENT_DB,
+        "agent_db": agent_database,
+        "grouping_strategy": grouping_strategy,
+        "target_docs_per_group": target_docs_per_group,
     }
 
 
-def _groups_for(coll: Collection, tenant_id: str, name: str) -> list[dict[str, Any]]:
+def _groups_for(
+    coll: Collection,
+    tenant_id: str,
+    name: str,
+    *,
+    strategy: str = "entity",
+    target_docs_per_group: int | None = None,
+    extra_match: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    if strategy == "topical":
+        match = {"tenant_id": tenant_id, **(extra_match or {})}
+        docs = list(coll.find(match, grouping_projection()))
+        target = int(target_docs_per_group or 100)
+        return topical_groups_from_docs(
+            docs,
+            tenant_id=tenant_id,
+            collection=name,
+            target_docs_per_group=target,
+        )
+    if extra_match:
+        return _entity_groups_from_match(coll, tenant_id, name, extra_match)
     if name == "customers":
         return []
     if name == "logs":
         return list(customer_month_groups(coll, tenant_id))
     return list(customer_groups(coll, tenant_id))
+
+
+def _entity_groups_from_match(
+    coll: Collection,
+    tenant_id: str,
+    name: str,
+    extra_match: dict[str, Any],
+) -> list[dict[str, Any]]:
+    from collections import defaultdict
+
+    match = {"tenant_id": tenant_id, **extra_match}
+    cursor = coll.find(match, {"_id": 1, "customer_id": 1, "timestamp": 1})
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for doc in cursor:
+        cid = doc.get("customer_id")
+        if not cid:
+            continue
+        buckets[str(cid)].append(doc)
+    out: list[dict[str, Any]] = []
+    for cid, members in buckets.items():
+        times = [d.get("timestamp") for d in members if isinstance(d.get("timestamp"), datetime)]
+        ids = [str(d["_id"]) for d in members]
+        out.append(
+            {
+                "key": f"customer:{cid}",
+                "name": f"{name} for {cid}",
+                "filter": {"tenant_id": tenant_id, "customer_id": cid, **extra_match},
+                "document_ids": ids,
+                "document_count": len(ids),
+                "time_min": min(times) if times else None,
+                "time_max": max(times) if times else None,
+                "entities": [cid],
+                "topics": [name, cid],
+            }
+        )
+    return out
 
 
 def _node(
