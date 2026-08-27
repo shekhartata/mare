@@ -148,8 +148,13 @@ flowchart TD
     AT -->|"neighborhood cards"| LLM
     LLM -->|"retrieve_evidence or query_documents"| MN["Mongo find on live docs"]
     MN -->|"documents"| LLM
-    LLM -->|"enough evidence"| ANS["submit_answer → cited answer"]
+    LLM --> DEC{"Enough evidence?"}
+    DEC -->|"no: search again or hop related_nodes"| RX
+    DEC -->|"no: read more docs"| MN
+    DEC -->|"yes"| ANS["submit_answer → cited answer"]
 ```
+
+Not enough means stay in the loop: search again, follow `related_nodes`, or read more documents. That continues until `submit_answer` or the turn budget (default 10).
 
 `search_information` runs **only on `navigation_nodes`**. Hits include `important_fields` and **`related_nodes`** (same entity, other collections) — that is the hop. `retrieve_evidence` then `find`s the **source** collection. No extra vectors. Once a field name has been seen, `query_documents` can count, filter, or return zero rows.
 
