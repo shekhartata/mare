@@ -1,11 +1,11 @@
 # Simple lookup — subscription tier
 
-- generated: 2026-08-26T08:40:08.369443+00:00
+- generated: 2026-08-27T06:18:12.571678+00:00
 - answer model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE mode: **blind** (schema_in_prompt=false)
 - max_agent_turns: 10
-- vector index: MARE **618** vs RAG **5424** (ratio 0.1139)
+- vector index: MARE **616** vs RAG **5424** (ratio 0.1136)
 
 ## Why this case
 
@@ -23,23 +23,29 @@ Apex Logistics (cust_007) began failing production deployments after migration m
 
 | metric | MARE (blind) | Conventional RAG |
 | --- | --- | --- |
-| end-to-end latency | **8991 ms** | **3933 ms** |
+| end-to-end latency | **10977 ms** | **3931 ms** |
 | agent turns | 4 | n/a |
 | tool calls | 3 | n/a |
-| LLM latency | 8421 ms | n/a |
-| Mongo latency | 346 ms | n/a |
+| LLM latency | 10362 ms | n/a |
+| Mongo latency | 372 ms | n/a |
 | retrieval operations | 1 | 1 |
-| LLM tokens | 11735 | 1033 |
+| LLM tokens | 11749 | 905 |
 | stop reason | completed | rag_topk |
 | answer correct | yes | yes |
-| evidence recall vs gold | 1.0 | 1.0 |
+| evidence recall vs gold (citations) | 1.0 | 1.0 |
 | evidence precision vs gold | 1.0 | 0.125 |
+| gold evidence recall (retrieved) | 1.0 | 1.0 |
+| documents retrieved | 1 | 8 |
+| required evidence | 1 | 1 |
+| context efficiency | 1.0 | 0.13 |
+| completeness groups | 0/0 | 0/0 |
+| gold missed | none | none |
 
-Persistent vector indexes (not per-query scan count): MARE searches the 618-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
+Persistent vector indexes (not per-query scan count): MARE searches the 616-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
 
 ## MARE answer (blind)
 
-enterprise (mare_demo.customers:cust_007)
+cust_007’s current subscription tier is enterprise (mare_demo.customers:cust_007).
 
 ### Hypothesis
 
@@ -47,7 +53,7 @@ _(none)_
 
 ### Claims
 
-- `C1` **supported** (0.86): cust_007 subscription_tier is enterprise
+- `C1` **supported** (0.90): cust_007 subscription_tier = enterprise
 
 ### Citations
 

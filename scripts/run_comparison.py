@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.baseline.rag import run_rag, vector_counts
 from app.config import get_settings
-from app.eval.scoring import answer_scores, evidence_scores
+from app.eval.scoring import answer_scores, evidence_scores, retrieval_metrics
 from app.llm import get_reasoning_model
 from app.llm.openai_model import OpenAIReasoningModel
 from app.mongo.client import ping
@@ -61,6 +61,36 @@ CASES = [
         "Top-K always returns something. MARE can filter and return zero documents, "
         "which is the only way to ground a negative.",
     ),
+    (
+        "distributed",
+        "dist_northstar_identity",
+        "Distributed evidence — Northstar identity cutover",
+        "No single record states the cause. Ticket, migration, deployment, and log each "
+        "hold one fragment. The question names Northstar but not issuer, JWT, or the "
+        "migration id.",
+    ),
+    (
+        "vk_small",
+        "vk_apex_small",
+        "Variable K — small (Apex most recent auth incident)",
+        "Same Apex authentication subject as the larger K cases, but only two gold "
+        "records are required. RAG with a small Top-K should be competitive.",
+    ),
+    (
+        "vk_medium",
+        "vk_apex_medium",
+        "Variable K — medium (Apex May sequence)",
+        "The May SSO sequence: migration, failed deploys, ticket, incident, logs. "
+        "About 7 gold records. Fixed Top-K=5 is likely incomplete; K=10 may suffice.",
+    ),
+    (
+        "vk_deep",
+        "vk_apex_deep",
+        "Variable K — deep (Apex three-month evolution)",
+        "March idle-timeout, April token TTL, May issuer mismatch. Fifteen or more "
+        "gold records. Fixed Top-K under-retrieves unless K is huge, which over-retrieves "
+        "the small sibling question.",
+    ),
 ]
 
 
@@ -82,6 +112,7 @@ def _session_blob(session) -> dict:
         "tool_calls": getattr(session, "tool_calls", 0) or 0,
         "llm_latency_ms": getattr(session, "llm_latency_ms", 0) or 0,
         "mongo_latency_ms": getattr(session, "mongo_latency_ms", 0) or 0,
+        "retrieved_docs": list(getattr(session, "retrieved_docs", None) or []),
         "router_recommendation": (
             session.router_recommendation.value
             if session.router_recommendation is not None
@@ -100,9 +131,20 @@ def _answer_spec(gold_query: dict) -> dict:
     return spec
 
 
+SEMANTIC_CLASSES = {"distributed", "variable_k"}
+RAG_K_SWEEP = (5, 10, 20)
+PRIMARY_RAG_K = 10
+
+
 def _score_engine(blob: dict, gold_query: dict) -> None:
     gold_sources = gold_query.get("gold_sources") or []
+    retrieved = blob.get("retrieved_docs") or blob.get("citations") or []
     blob["evidence"] = evidence_scores(blob.get("citations") or [], gold_sources)
+    blob["retrieval"] = retrieval_metrics(
+        retrieved,
+        gold_sources,
+        required_evidence_count=gold_query.get("required_evidence_count"),
+    )
     blob["answer_score"] = answer_scores(
         blob.get("answer") or "",
         {**_answer_spec(gold_query), "_citations": blob.get("citations") or []},
@@ -117,8 +159,8 @@ def run_pair(
     max_turns: int,
     skip_rag: bool = False,
     existing_rag: dict | None = None,
+    existing_rag_by_k: dict | None = None,
 ) -> dict:
-    gold_sources = gold_query.get("gold_sources") or []
     mode = "informed" if schema_in_prompt else "blind"
     print(f"  MARE ({mode}): {question[:80]}...")
     adaptive = run_agent(
@@ -130,23 +172,43 @@ def run_pair(
         f"llm={round(adaptive.llm_latency_ms)}ms mongo={round(adaptive.mongo_latency_ms)}ms"
     )
     a = _session_blob(adaptive)
-    a["evidence"] = evidence_scores(a["citations"], gold_sources)
-    a["answer_score"] = answer_scores(
-        a["answer"], {**_answer_spec(gold_query), "_citations": a["citations"]}
-    )
+    _score_engine(a, gold_query)
+
+    rag_by_k: dict[str, dict] = dict(existing_rag_by_k or {})
+    semantic = gold_query.get("class") in SEMANTIC_CLASSES
     if skip_rag and existing_rag:
         r = existing_rag
         print("  RAG:  reused from previous comparison.json")
+        _score_engine(r, gold_query)
+        for blob in rag_by_k.values():
+            _score_engine(blob, gold_query)
+    elif semantic:
+        for k in RAG_K_SWEEP:
+            key = f"hybrid_{k}"
+            print(f"  RAG hybrid k={k}: {question[:80]}...")
+            rag = run_rag(question, top_k=k, method="hybrid")
+            print(f"    done {rag.status.value} {round(rag.elapsed_ms)}ms")
+            blob = _session_blob(rag)
+            blob["rag_method"] = "hybrid"
+            blob["rag_top_k"] = k
+            _score_engine(blob, gold_query)
+            rag_by_k[key] = blob
+        print(f"  RAG vector k={PRIMARY_RAG_K}: {question[:80]}...")
+        vec = run_rag(question, top_k=PRIMARY_RAG_K, method="vector")
+        print(f"    done {vec.status.value} {round(vec.elapsed_ms)}ms")
+        vblob = _session_blob(vec)
+        vblob["rag_method"] = "vector"
+        vblob["rag_top_k"] = PRIMARY_RAG_K
+        _score_engine(vblob, gold_query)
+        rag_by_k[f"vector_{PRIMARY_RAG_K}"] = vblob
+        r = rag_by_k.get(f"hybrid_{PRIMARY_RAG_K}") or next(iter(rag_by_k.values()))
     else:
         print(f"  RAG:  {question[:80]}...")
         rag = run_rag(question)
         print(f"    done {rag.status.value} {round(rag.elapsed_ms)}ms")
         r = _session_blob(rag)
-        r["evidence"] = evidence_scores(r["citations"], gold_sources)
-        r["answer_score"] = answer_scores(
-            r["answer"], {**_answer_spec(gold_query), "_citations": r["citations"]}
-        )
-    return {"adaptive": a, "rag": r}
+        _score_engine(r, gold_query)
+    return {"adaptive": a, "rag": r, "rag_by_k": rag_by_k}
 
 
 def markdown_case(
@@ -213,10 +275,35 @@ def markdown_case(
             f"{_yn(r['answer_score'].get('cause_found'))} |",
         ]
     lines += [
-        f"| evidence recall vs gold | {_fmt_recall(a['evidence'])} | "
+        f"| evidence recall vs gold (citations) | {_fmt_recall(a['evidence'])} | "
         f"{_fmt_recall(r['evidence'])} |",
         f"| evidence precision vs gold | {a['evidence']['precision']} | "
         f"{r['evidence']['precision']} |",
+    ]
+    ar = a.get("retrieval") or {}
+    rr = r.get("retrieval") or {}
+    if ar or rr:
+        lines += [
+            f"| gold evidence recall (retrieved) | {_fmt_opt(ar.get('gold_evidence_recall'))} | "
+            f"{_fmt_opt(rr.get('gold_evidence_recall'))} |",
+            f"| documents retrieved | {ar.get('documents_retrieved', 'n/a')} | "
+            f"{rr.get('documents_retrieved', 'n/a')} |",
+            f"| required evidence | {ar.get('required_evidence_count', 'n/a')} | "
+            f"{rr.get('required_evidence_count', 'n/a')} |",
+            f"| context efficiency | {_fmt_opt(ar.get('context_efficiency'))} | "
+            f"{_fmt_opt(rr.get('context_efficiency'))} |",
+            f"| completeness groups | {a['answer_score'].get('groups_hit', 0)}/"
+            f"{a['answer_score'].get('groups_total', 0)} | "
+            f"{r['answer_score'].get('groups_hit', 0)}/"
+            f"{r['answer_score'].get('groups_total', 0)} |",
+        ]
+        missing_a = ar.get("critical_evidence_missing") or []
+        missing_r = rr.get("critical_evidence_missing") or []
+        lines += [
+            f"| gold missed | {', '.join(missing_a) or 'none'} | "
+            f"{', '.join(missing_r) or 'none'} |",
+        ]
+    lines += [
         "",
         "Persistent vector indexes (not per-query scan count): MARE searches the "
         f"{footprint['adaptive_vector_count']}-node navigation index, then reads "
@@ -224,6 +311,36 @@ def markdown_case(
         f"RAG searches the {footprint['rag_vector_count']}-chunk vector index "
         "and returns Top-K.",
         "",
+    ]
+    rag_by_k = pair.get("rag_by_k") or {}
+    if rag_by_k:
+        lines += [
+            "## RAG Top-K sweep",
+            "",
+            "| variant | correct | gold recall | docs retrieved | completeness | ms |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for key in sorted(rag_by_k):
+            blob = rag_by_k[key]
+            ret = blob.get("retrieval") or {}
+            score = blob.get("answer_score") or {}
+            lines.append(
+                f"| {key} | {_yn(score.get('correct'))} | "
+                f"{_fmt_opt(ret.get('gold_evidence_recall'))} | "
+                f"{ret.get('documents_retrieved', 'n/a')} | "
+                f"{score.get('groups_hit', 0)}/{score.get('groups_total', 0)} | "
+                f"{round(blob.get('elapsed_ms') or 0)} |"
+            )
+        lines += ["", "### RAG answers by variant", ""]
+        for key in sorted(rag_by_k):
+            blob = rag_by_k[key]
+            lines += [
+                f"**{key}**",
+                "",
+                blob.get("answer") or "_(empty)_",
+                "",
+            ]
+    lines += [
         f"## MARE answer ({mode})",
         "",
         a["answer"] or "_(empty)_",
@@ -310,6 +427,10 @@ def _fmt_recall(evidence: dict) -> str:
     return "n/a" if rec is None else str(rec)
 
 
+def _fmt_opt(value) -> str:
+    return "n/a" if value is None else str(value)
+
+
 def _parse_cli(argv: list[str]) -> dict:
     informed = "--informed" in argv
     rescore = "--rescore" in argv
@@ -341,6 +462,8 @@ def _rescore_from_payload() -> None:
         for key in ("adaptive", "adaptive_blind", "adaptive_informed", "rag"):
             if key in case:
                 _score_engine(case[key], q)
+        for blob in (case.get("rag_by_k") or {}).values():
+            _score_engine(blob, q)
         meta = by_slug.get(slug)
         if not meta:
             continue
@@ -352,6 +475,7 @@ def _rescore_from_payload() -> None:
             "rag": case["rag"],
             "informed": informed,
             "blind_primary": bool(case.get("adaptive_blind")),
+            "rag_by_k": case.get("rag_by_k") or {},
         }
         md = markdown_case(
             title,
@@ -397,10 +521,17 @@ def main() -> None:
 
     cases = list(CASES)
     if cli["only"]:
-        cases = [c for c in cases if c[0] == cli["only"]]
+        only = cli["only"]
+        cases = [
+            c
+            for c in cases
+            if c[0] == only
+            or c[0].startswith(only)
+            or gold.get(c[1], {}).get("class") == only
+        ]
         if not cases:
             slugs = ", ".join(c[0] for c in CASES)
-            raise SystemExit(f"unknown --only {cli['only']}; use {slugs}")
+            raise SystemExit(f"unknown --only {only}; use a slug, prefix (vk), or class ({slugs})")
 
     prev: dict = {}
     prev_path = OUT / "comparison.json"
@@ -437,6 +568,7 @@ def main() -> None:
             max_turns=max_turns,
             skip_rag=skip_rag,
             existing_rag=existing.get("rag"),
+            existing_rag_by_k=existing.get("rag_by_k"),
         )
         stored = {
             "id": qid,
@@ -446,6 +578,7 @@ def main() -> None:
             "why": why,
             "rag": pair["rag"],
             "adaptive": pair["adaptive"],
+            "rag_by_k": pair.get("rag_by_k") or existing.get("rag_by_k") or {},
         }
         if existing.get("adaptive_blind") and schema_in_prompt:
             stored["adaptive_blind"] = existing["adaptive_blind"]
@@ -471,6 +604,7 @@ def main() -> None:
                 "rag": pair["rag"],
                 "informed": stored.get("adaptive_informed"),
                 "blind_primary": bool(stored.get("adaptive_blind")),
+                "rag_by_k": stored.get("rag_by_k") or {},
             },
             footprint,
             schema_in_prompt=schema_in_prompt and not stored.get("adaptive_blind"),
@@ -537,6 +671,11 @@ def _summary_md(payload: dict) -> str:
         "nearby chunk.",
         "- **Negative** — the correct answer is that matching documents do not "
         "exist. Top-K always returns something.",
+        "- **Distributed (B1)** — no single record contains the causal sentence. "
+        "Headline metric is gold evidence recall over retrieved docs, plus answer "
+        "completeness groups.",
+        "- **Variable K (B2)** — three Apex auth questions that need ~2, ~7, and "
+        "~18 gold records. RAG is swept at hybrid Top-K 5/10/20 (and vector K=10).",
         "",
         "The headline index metric is unchanged: "
         f"**{fp['adaptive_vector_count']} navigation vectors vs "
@@ -562,6 +701,10 @@ def _summary_md(payload: dict) -> str:
         ("bridge", "Bridge (unnamed entity)"),
         ("aggregation", "Aggregation (count)"),
         ("negative", "Negative (absence)"),
+        ("distributed", "Distributed evidence"),
+        ("vk_small", "Variable K — small"),
+        ("vk_medium", "Variable K — medium"),
+        ("vk_deep", "Variable K — deep"),
     )
     for slug, label in labels:
         c = payload["cases"].get(slug)
@@ -600,11 +743,76 @@ def _summary_md(payload: dict) -> str:
         "- **Bridge:** entity-only answers are no longer marked correct. Both "
         "`entity_found` and `cause_found` must hold. That is the hop the product claims.",
         "- **Aggregation / negative:** structured query after discovery, not Top-K.",
+        "- **Distributed:** completeness requires all four evidence fragments "
+        "(entity, identity cutover, stale runtime config, token rejection). "
+        "Citation-only recall is not enough — we score retrieved document ids.",
+        "- **Variable K:** MARE retrieval volume should rise from small → medium → "
+        "deep. RAG at a fixed K either misses the deep gold set or over-retrieves "
+        "the small question.",
         "",
         "These two levers are what justify MARE over plain Mongo MCP: (1) the "
         "agent was not told the schema, and (2) bridge scoring requires the second "
         "hop (root cause), not just naming the customer.",
         "",
+    ]
+    semantic_slugs = (
+        ("distributed", "Distributed (B1)"),
+        ("vk_small", "Variable K — small"),
+        ("vk_medium", "Variable K — medium"),
+        ("vk_deep", "Variable K — deep"),
+    )
+    if any(slug in payload.get("cases", {}) for slug, _ in semantic_slugs):
+        lines += [
+            "## Semantic retrieval (B1 / B2)",
+            "",
+            "Gold evidence recall is scored on **retrieved document ids**, not answer "
+            "citations. Completeness is `groups_hit / groups_total` on the answer.",
+            "",
+            "| case | MARE gold recall | RAG hybrid_10 recall | MARE docs | RAG docs | "
+            "MARE complete | RAG complete |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for slug, label in semantic_slugs:
+            c = payload["cases"].get(slug)
+            if not c:
+                continue
+            a = _mare_blob(c)
+            r = c.get("rag") or {}
+            ar = a.get("retrieval") or {}
+            rr = r.get("retrieval") or {}
+            ascore = a.get("answer_score") or {}
+            rscore = r.get("answer_score") or {}
+            lines.append(
+                f"| [{label}]({slug}.md) | "
+                f"{_fmt_opt(ar.get('gold_evidence_recall'))} | "
+                f"{_fmt_opt(rr.get('gold_evidence_recall'))} | "
+                f"{ar.get('documents_retrieved', 'n/a')} | "
+                f"{rr.get('documents_retrieved', 'n/a')} | "
+                f"{ascore.get('groups_hit', 0)}/{ascore.get('groups_total', 0)} | "
+                f"{rscore.get('groups_hit', 0)}/{rscore.get('groups_total', 0)} |"
+            )
+        vk_deep = payload.get("cases", {}).get("vk_deep") or {}
+        rag_by_k = vk_deep.get("rag_by_k") or {}
+        if rag_by_k:
+            lines += [
+                "",
+                "RAG Top-K sweep on the deep Apex question:",
+                "",
+                "| variant | correct | gold recall | docs | completeness |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+            for key in sorted(rag_by_k):
+                blob = rag_by_k[key]
+                ret = blob.get("retrieval") or {}
+                score = blob.get("answer_score") or {}
+                lines.append(
+                    f"| {key} | {_yn(score.get('correct'))} | "
+                    f"{_fmt_opt(ret.get('gold_evidence_recall'))} | "
+                    f"{ret.get('documents_retrieved', 'n/a')} | "
+                    f"{score.get('groups_hit', 0)}/{score.get('groups_total', 0)} |"
+                )
+        lines.append("")
+    lines += [
         "## What happened on this run",
         "",
     ]
@@ -644,8 +852,11 @@ def _summary_md(payload: dict) -> str:
         "python scripts/run_comparison.py              # schema-blind MARE vs RAG",
         "python scripts/run_comparison.py --informed   # A/B with schema in the prompt",
         "python scripts/run_comparison.py --only bridge",
+        "python scripts/run_comparison.py --only distributed",
+        "python scripts/run_comparison.py --only vk",
         "python scripts/run_comparison.py --turns 10",
         "python scripts/run_comparison.py --rescore    # no LLM; rewrite markdown",
+        "python scripts/run_comparison.py --rerun-rag  # force RAG after a reseed",
         "```",
         "",
     ]

@@ -1,6 +1,6 @@
 import json
 
-from app.eval.scoring import answer_scores
+from app.eval.scoring import answer_scores, retrieval_metrics
 from app.retrieval.tools import (
     TOOL_DEFINITIONS,
     _brief_node,
@@ -197,3 +197,39 @@ def test_negative_scoring_allows_subject_incidents_not_foreign():
     leaked = answer_scores("No. April incidents belong to other customers.", spec)
     assert leaked["foreign_incident_cites"] == ["incidents:inc_20044"]
     assert leaked["correct"] is False
+
+
+def test_retrieval_metrics_uses_retrieved_ids_not_citations():
+    gold = [
+        {"collection": "tickets", "document_id": "tkt_ns_login"},
+        {"collection": "migrations", "document_id": "mig_ns_identity"},
+        {"collection": "deployments", "document_id": "dep_ns_stale"},
+        {"collection": "logs", "document_id": "log_ns_jwt"},
+    ]
+    retrieved = [
+        {"collection": "tickets", "document_id": "tkt_ns_login", "text": "login failures"},
+        {"collection": "logs", "document_id": "log_ns_jwt", "text": "issuer did not match"},
+        {
+            "collection": "tickets",
+            "document_id": "tkt_unrelated",
+            "text": "invoice webhook noise " * 12,
+        },
+    ]
+    metrics = retrieval_metrics(retrieved, gold, required_evidence_count=4)
+    assert metrics["gold_evidence_recall"] == 0.5
+    assert metrics["documents_retrieved"] == 3
+    assert metrics["useful_documents"] == 2
+    assert metrics["irrelevant_documents"] == 1
+    assert metrics["required_evidence_count"] == 4
+    assert metrics["critical_evidence_missing"] == [
+        "deployments:dep_ns_stale",
+        "migrations:mig_ns_identity",
+    ]
+    assert metrics["context_efficiency"] is not None
+    assert 0 < metrics["context_efficiency"] < 1
+    full = retrieval_metrics(retrieved[:2] + [
+        {"collection": "migrations", "document_id": "mig_ns_identity", "text": "oidc"},
+        {"collection": "deployments", "document_id": "dep_ns_stale", "text": "previous"},
+    ], gold, required_evidence_count=4)
+    assert full["gold_evidence_recall"] == 1.0
+    assert full["critical_evidence_missing"] == []

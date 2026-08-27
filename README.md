@@ -4,7 +4,7 @@
 
 MARE turns MongoDB from a passive RAG data source into an information environment an agent can **navigate**: find where the answer lives, then read the actual records.
 
-Conventional RAG embeds every chunk and returns Top-K. MARE embeds only a small **navigation index** (618 vectors here vs 5424 RAG chunks) and lets the agent hop, filter, and count against live Mongo data.
+Conventional RAG embeds every chunk and returns Top-K. MARE embeds only a small **navigation index** (616 vectors here vs 5424 RAG chunks) and lets the agent hop, filter, and count against live Mongo data.
 
 This repository is the working MVP. The rest of this README is the product document: when to use it, how to run it, where it beats RAG, and how navigation and retrieval are implemented.
 
@@ -19,6 +19,8 @@ This repository is the working MVP. The rest of this README is the product docum
 | "Which enterprise customer managed by Elena Rossi broke in May?" | **MARE** | The entity is not named. Requires a lookup, then a hop to another collection. |
 | "How many customers are on enterprise?" | **MARE** | The answer is a count over the collection, not a nearby chunk. |
 | "Did Cedar have any April incidents?" | **MARE** | The answer is *nothing matched*. Top-K always returns something. |
+| "Why did Northstar logins break after platform changes?" | **MARE** | The cause is split across four records. Default Top-K latches onto a similar Apex story. |
+| "How did Apex auth failures evolve over three months?" | Either | Both can name the three failure modes. RAG recall rises if you raise K; MARE reads more without changing K. |
 
 MARE is **not faster** than RAG, and on questions that name the IDs it is not more complete either. It wins on questions Top-K cannot structurally answer.
 
@@ -124,18 +126,19 @@ Authorization is never delegated to the model. Every read passes through `inject
 
 ## Where MARE wins, case by case
 
-Five cases, run end to end against Atlas. Each one below shows the actual prompt, so you can see what it is testing.
+Nine cases, run end to end against Atlas after a full reseed. Each one below shows the actual prompt, so you can see what it is testing. Numbers are **schema-blind** MARE vs conventional hybrid RAG (primary Top-K=10). Informed-schema control numbers for the original five cases were not re-run after this reseed.
 
 Two rules make these honest:
 
 1. **The agent is schema-blind.** Its system prompt does not name any database, collection, or field. It has to discover `customers`, `deployments`, `subscription_tier` from the navigation index. Otherwise "MARE can count" would just mean "we told the model the schema."
 2. **Bridge requires both hops.** Naming the customer is not enough; the answer must also reach the root cause.
+3. **Distributed evidence is scored on retrieved document ids**, not just what the answer cites. Completeness is whether the answer hits every evidence group.
 
 ### 1. Simple lookup — RAG's home turf
 
 > **Prompt:** "What is customer cust_007's current subscription tier?"
 
-The ID is in the question, so one search finds it. **Both are correct.** RAG is more than twice as fast (3.9s vs 9.0s). MARE's only edge is precision: it cites the one customer record, while RAG cites eight similar customers.
+The ID is in the question, so one search finds it. **Both are correct.** RAG is more than twice as fast (3.9s vs 11.0s). MARE's only edge is precision: it cites the one customer record, while RAG cites eight similar customers.
 
 *Do not sell MARE on this case.*
 
@@ -143,7 +146,7 @@ The ID is in the question, so one search finds it. **Both are correct.** RAG is 
 
 > **Prompt:** "Why did customer Apex Logistics (cust_007) begin experiencing deployment failures after migration mig_auth_sso, and what evidence supports the most likely root cause?"
 
-The question names both the customer and the migration, so Top-K can scoop the migration, deploys, logs, and ticket in a single shot. **Both are correct**, and RAG actually cites *more* gold documents (recall 0.875 vs 0.375) and is faster.
+The question names both the customer and the migration, so Top-K can scoop the migration, deploys, logs, and ticket in a single shot. **Both are correct**, and RAG actually cites *more* gold documents (recall 0.625 vs 0.25) and is faster.
 
 *Also not a MARE win. Be upfront about it.*
 
@@ -163,9 +166,9 @@ This is the strongest case for MARE, because a plain `find` gets you the custome
 > **Prompt:** "How many customers in mare_demo are currently on the enterprise subscription tier?"
 
 - **RAG: 8** — exactly its Top-K. It counted what it retrieved, not what exists.
-- **MARE: 18** — the correct count, from a structured query.
+- **MARE this run: incorrect.** It retrieved all 18 enterprise customers (gold evidence recall 1.0) and then the synthesizer refused to count them, claiming the briefed records had no `subscription_tier` field. Retrieval did the hard part; the answer did not.
 
-Cleanest demo of the failure mode: chunk retrieval cannot count a collection.
+Do not treat aggregation as a guaranteed win. The structured-query *path* is still the only one that can count a collection; this run shows the answering model can still drop the ball after the documents are in hand.
 
 ### 5. Negative — proving nothing matched
 
@@ -176,19 +179,51 @@ Both said "no," but only one grounded it.
 - **RAG: incorrect.** It cited April incidents belonging to `cust_030`, `cust_047`, and `cust_033`. Top-K always returns something, so an absence claim has no evidence behind it.
 - **MARE: correct.** It queried Cedar's own incidents and showed they fall in January, February, and June — no April.
 
+### 6. Distributed evidence — no single record has the cause
+
+> **Prompt:** "Why did Northstar begin experiencing intermittent authentication failures after recent platform changes?"
+
+The question names Northstar but not `cust_012`, issuer, JWT, OIDC, or the migration id. The cause is split: a login ticket, an OIDC issuer change, a rollout that kept the previous auth config, and a token-validation log. No one document contains the full sentence.
+
+- **RAG hybrid K=10: incorrect.** It found the Northstar login ticket, then explained it with Apex's SSO story (`mig_auth_sso`, `inc_1001`, auth-v3). Similar chunks, wrong customer.
+- **RAG hybrid K=20: correct**, gold evidence recall 1.0 — once K is large enough, Top-K can scoop all four fragments.
+- **MARE: correct** (completeness 4/4) from the identity migration and the stale runtime config, without being told those collection names. Gold evidence recall was 0.5 (it missed the ticket and the JWT log) and it still named the real cause.
+
+The honest claim is not "RAG can never assemble distributed evidence." It is that **default Top-K latches onto the nearest similar incident**, and you have to know to raise K.
+
+### 7. Variable K — same subject, three gold-set sizes
+
+Three questions about Apex authentication, gold sets of 2, 7, and 18 records. RAG is swept at hybrid K=5/10/20. MARE keeps the same agent loop.
+
+| Question | MARE complete | RAG K=10 complete | MARE gold recall | RAG K=5 / 10 / 20 recall | MARE docs |
+| --- | --- | --- | --- | --- | --- |
+| Most recent Apex auth incident | no (cause yes, did not restate Apex) | no (same) | 0.5 | 1.0 / 1.0 / 1.0 | 2 |
+| May SSO sequence | yes | yes | 0.143 | 0.714 / 0.857 / 1.0 | 2 |
+| Three-month evolution | yes | yes | 0.333 | 0.222 / 0.5 / 0.889 | 23 |
+
+RAG hybrid K=5 and vector K=10 *did* score complete on the small question. At K=10 both engines named the SSO cause but omitted "Apex"/"cust_007" in the answer text.
+
+On the deep question **both answers were complete** at every K we tried, including RAG K=5. The three incident records are enough to name idle-timeout, token TTL, and issuer mismatch. What actually moves is **evidence recall**: RAG's gold recall scales with K (0.222 → 0.889), and MARE's retrieved volume scales with the question (2 docs on small/medium, 23 on deep) without changing a K parameter.
+
+*Do not sell MARE as more correct than RAG on this suite.* Sell it as not having to pick K in advance, and as not confusing Northstar with Apex.
+
 ### Results table
 
-`gpt-5` answering, `gpt-5-mini` tool loop, 10-turn budget. "Informed" is the same run with the schema put back into the prompt, as a control.
+`gpt-5` answering, `gpt-5-mini` tool loop, 10-turn budget. Schema-blind vs hybrid RAG (K=10 unless noted).
 
-| Case | MARE (blind) | MARE (informed) | RAG | Blind | Informed | RAG |
-| --- | --- | --- | --- | --- | --- | --- |
-| Simple lookup | yes | yes | yes | 9.0s | 8.5s | 3.9s |
-| Named multi-hop | yes | yes | yes | 18.6s | 34.3s | 13.5s |
-| **Bridge** | **yes** (entity + cause) | yes | **no** (cause, no entity) | 38.7s | 30.4s | 8.6s |
-| **Aggregation** | **18** | 18 | **8** | 15.8s | 17.1s | 8.2s |
-| **Negative** | **yes** (grounded) | yes | **no** (wrong customers) | 13.4s | 12.3s | 9.7s |
+| Case | MARE (blind) | RAG | MARE time | RAG time |
+| --- | --- | --- | --- | --- |
+| Simple lookup | yes | yes | 11.0s | 3.9s |
+| Named multi-hop | yes | yes | 28.9s | 9.7s |
+| **Bridge** | **yes** (entity + cause) | **no** (cause, no entity) | 20.9s | 5.1s |
+| Aggregation | no (retrieved 18, did not count) | **8** | 16.8s | 5.8s |
+| **Negative** | **yes** (grounded) | **no** (wrong customers) | 15.5s | 4.1s |
+| **Distributed** | **yes** (4/4 groups) | **no** at K=10 (Apex story); yes at K=20 | 26.9s | 11.7s |
+| Variable K — small | no (cause, no entity) | no at K=10; yes at K=5 | 15.2s | 6.9s |
+| Variable K — medium | yes | yes | 22.0s | 12.2s |
+| Variable K — deep | yes (4/4); 23 docs | yes (4/4); recall 0.50 at K=10 / 0.89 at K=20 | 33.8s | 12.7s |
 
-Honest caveats: RAG is faster in every single case. Blind and informed scored the same, which means the navigation index — not a leaked schema — is what carried the blind runs. Persistent vectors stay **618 vs 5424** (11%).
+Honest caveats: RAG is faster in every single case. On named lookups and the Apex variable-K answers, RAG is as complete or more complete. Persistent vectors stay **616 vs 5424** (11%). Informed-schema A/B was not re-run after this reseed.
 
 Full detail per case: [reports/README.md](reports/README.md).
 
@@ -198,12 +233,15 @@ Full detail per case: [reports/README.md](reports/README.md).
 python scripts/run_comparison.py              # schema-blind MARE vs RAG (default)
 python scripts/run_comparison.py --informed   # control: schema in the prompt
 python scripts/run_comparison.py --only bridge
+python scripts/run_comparison.py --only distributed
+python scripts/run_comparison.py --only vk
 python scripts/run_comparison.py --rescore    # re-score saved runs, no LLM calls
+python scripts/run_comparison.py --rerun-rag  # force RAG after a reseed
 ```
 
 Writes `reports/README.md` plus one markdown file per case. Gold labels live in `benchmarks/gold.json`.
 
-For the wider gold set (all 18 queries rather than these 5):
+For the wider gold set (all 22 queries rather than these 9):
 
 ```bash
 python scripts/run_benchmark.py
@@ -235,7 +273,7 @@ MARE is the split made concrete. MongoDB stays the system of record. Nothing is 
               │                    │
               ▼                    ▼
      navigation_nodes         raw Mongo docs
-     (618 vectors)            (untouched)
+     (616 vectors)            (untouched)
               │                    │
               └────────┬───────────┘
                        ▼
@@ -381,7 +419,7 @@ There is a second, unrelated MCP in this project: **MongoDB MCP** (Cursor connec
 
 The important constraint, on both paths: the agent can *request* a query; it cannot *authorize* one. `inject_tenant` runs inside every read. Allowed databases are a server-side allowlist. The model can invent a collection name and get an error; it cannot widen tenant scope or dump another database.
 
-That is why the five comparison cases land where they do:
+That is why the comparison cases land where they do:
 
 | Case | Navigation | Retrieval |
 | --- | --- | --- |
@@ -390,6 +428,8 @@ That is why the five comparison cases land where they do:
 | Bridge | Find the unnamed customer, then follow `related_nodes` | Read deployments + migration, not a similar ticket. |
 | Aggregation | Discover the customers collection and `subscription_tier` from nodes | Count with a filter, not with Top-K. |
 | Negative | Discover incidents + the date field | A filter that returns **zero** docs is the evidence. Top-K cannot produce that. |
+| Distributed | Find Northstar's identity neighborhood, not Apex's | Read four fragments; default Top-K mixes in the similar SSO incident. |
+| Variable K | Same Apex auth neighborhood | Keep reading until the question's depth is covered, instead of committing to a K. |
 
 ### Data layout
 
@@ -427,7 +467,7 @@ Dense vectors exist only where they help *find a neighborhood*. They do not exis
 
 ```text
 RAG (this demo):     every document → chunks → 5424 vectors
-MARE (this demo):    database + collections + groups + a few customer pointers → 618 vectors
+MARE (this demo):    database + collections + groups + a few customer pointers → 616 vectors
                      ratio 0.1139
 ```
 

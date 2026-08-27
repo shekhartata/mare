@@ -294,6 +294,16 @@ def run_agent(
             break
 
     gathered = _dedupe_docs(gathered)
+    session.retrieved_docs = [
+        {
+            "database": d.ref.database,
+            "collection": d.ref.collection,
+            "document_id": d.ref.document_id,
+            "text": d.text or "",
+        }
+        for d in gathered
+        if d.ref.document_id and d.ref.collection != "unknown"
+    ]
     draft = submitted or {}
     session.hypothesis = str(draft.get("hypothesis") or session.hypothesis or "")
     session.claims = _claims_from_payload(draft.get("claims") or [])

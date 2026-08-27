@@ -202,6 +202,7 @@ class EvidenceSession(BaseModel):
     mongo_latency_ms: float = 0
     answer: str = ""
     citations: list[MongoRef] = Field(default_factory=list)
+    retrieved_docs: list[dict[str, Any]] = Field(default_factory=list)
     hypothesis_versions: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None

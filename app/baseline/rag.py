@@ -77,6 +77,23 @@ def run_rag(
         for h in hits
         if h.get("source_id")
     ]
+    retrieved_docs = []
+    seen: set[str] = set()
+    for h in hits:
+        sid = str(h.get("source_id") or "")
+        coll = str(h.get("collection") or "")
+        key = f"{coll}:{sid}"
+        if not sid or key in seen:
+            continue
+        seen.add(key)
+        retrieved_docs.append(
+            {
+                "database": RAW_DB,
+                "collection": coll,
+                "document_id": sid,
+                "text": str(h.get("text") or ""),
+            }
+        )
     elapsed = (time.perf_counter() - started) * 1000
     return EvidenceSession(
         _id=session_id,
@@ -85,6 +102,7 @@ def run_rag(
         hypothesis="conventional RAG top-k",
         answer=result.text.strip(),
         citations=citations,
+        retrieved_docs=retrieved_docs,
         status=SessionStatus.complete,
         stop_reason="rag_topk",
         retrieval_count=1,

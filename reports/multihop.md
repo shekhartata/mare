@@ -1,11 +1,11 @@
 # Named multi-hop — Apex Logistics SSO failure
 
-- generated: 2026-08-26T08:40:08.371024+00:00
+- generated: 2026-08-27T06:18:51.245740+00:00
 - answer model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE mode: **blind** (schema_in_prompt=false)
 - max_agent_turns: 10
-- vector index: MARE **618** vs RAG **5424** (ratio 0.1139)
+- vector index: MARE **616** vs RAG **5424** (ratio 0.1136)
 
 ## Why this case
 
@@ -23,29 +23,33 @@ Apex Logistics (cust_007) began failing production deployments after migration m
 
 | metric | MARE (blind) | Conventional RAG |
 | --- | --- | --- |
-| end-to-end latency | **18593 ms** | **13534 ms** |
-| agent turns | 4 | n/a |
-| tool calls | 3 | n/a |
-| LLM latency | 17892 ms | n/a |
-| Mongo latency | 483 ms | n/a |
-| retrieval operations | 1 | 1 |
-| LLM tokens | 22528 | 2024 |
+| end-to-end latency | **28942 ms** | **9663 ms** |
+| agent turns | 5 | n/a |
+| tool calls | 4 | n/a |
+| LLM latency | 27422 ms | n/a |
+| Mongo latency | 891 ms | n/a |
+| retrieval operations | 2 | 1 |
+| LLM tokens | 33613 | 2050 |
 | stop reason | completed | rag_topk |
 | answer correct | yes | yes |
-| evidence recall vs gold | 0.375 | 0.875 |
-| evidence precision vs gold | 0.15 | 0.875 |
+| evidence recall vs gold (citations) | 0.25 | 0.625 |
+| evidence precision vs gold | 0.111 | 0.625 |
+| gold evidence recall (retrieved) | 0.25 | 0.625 |
+| documents retrieved | 18 | 8 |
+| required evidence | 8 | 8 |
+| context efficiency | 0.152 | 0.656 |
+| completeness groups | 0/0 | 0/0 |
+| gold missed | customers:cust_007, deployments:dep_apex_fail_1, deployments:dep_apex_fail_2, logs:log_1001, logs:log_1002, tickets:tkt_1001 | customers:cust_007, logs:log_1001, logs:log_1002 |
 
-Persistent vector indexes (not per-query scan count): MARE searches the 618-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
+Persistent vector indexes (not per-query scan count): MARE searches the 616-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
 
 ## MARE answer (blind)
 
-Most likely root cause
-- After mig_auth_sso, the SSO issuer changed to https://auth-v3.apex.io, but Apex Logistics continued using the old issuer https://auth-v2.apex.io, causing JWT validation to fail with AUTH_401 during deployment of auth-service.
+Apex’s deployments began failing right after mig_auth_sso because the SSO issuer changed to https://auth-v3.apex.io and the legacy issuer would reject tokens, but the deployer was still configured with the old AUTH_ISSUER (auth‑v2). Evidence:
+- The migration explicitly required updating AUTH_ISSUER to https://auth-v3.apex.io and warned the legacy issuer would reject tokens (mare_demo.migrations:mig_auth_sso).
+- Incident inc_1001, opened the day after the migration, reports multiple production deployments failing authentication “post SSO migration” and records the root cause as a stale AUTH_ISSUER still pointing at auth‑v2 on the deployer, with failed deployments dep_apex_fail_1 and dep_apex_fail_2 (mare_demo.incidents:inc_1001).
 
-Evidence
-- Migration required clients to update AUTH_ISSUER to https://auth-v3.apex.io and warned the legacy issuer would reject tokens (mare_demo.migrations:mig_auth_sso).
-- The first post-migration prod deployment failed with AUTH_401 and “token validation failed: unauthorized issuer,” and it’s linked to mig_auth_sso (mare_demo.deployments:dep_apex_fail_1).
-- Auth-service error log from that failed deployment shows “jwt issuer mismatch: expected https://auth-v3.apex.io, got https://auth-v2.apex.io” (mare_demo.logs:log_1001).
+Note: The specific failed deployment records aren’t included here, but the incident’s description and root cause directly tie the failures to the stale issuer after the migration (mare_demo.incidents:inc_1001; mare_demo.migrations:mig_auth_sso).
 
 ### Hypothesis
 
@@ -53,45 +57,43 @@ _(none)_
 
 ### Claims
 
-_(none)_
+- `c1` **supported** (0.90): Migration mig_auth_sso changed AUTH_ISSUER to https://auth-v3.apex.io and warned legacy issuer would be rejected.
+- `c2` **supported** (0.92): Incident inc_1001 attributes deployment authentication failures to a stale AUTH_ISSUER still pointing at auth-v2.
 
 ### Citations
 
+- `mare_demo.incidents:inc_1001`
 - `mare_demo.migrations:mig_auth_sso`
-- `mare_demo.deployments:dep_apex_fail_1`
-- `mare_demo.logs:log_1001`
-- `mare_demo.migrations:mig_n_004`
-- `mare_demo.migrations:mig_n_005`
-- `mare_demo.deployments:dep_n_0040`
-- `mare_demo.deployments:dep_n_0114`
-- `mare_demo.deployments:dep_n_0350`
-- `mare_demo.deployments:dep_n_0369`
-- `mare_demo.deployments:dep_n_0025`
-- `mare_demo.logs:log_n_02324`
-- `mare_demo.logs:log_n_00375`
-- `mare_demo.logs:log_n_03595`
-- `mare_demo.logs:log_n_02500`
-- `mare_demo.logs:log_n_03642`
-- `mare_demo.logs:log_n_01963`
-- `mare_demo.logs:log_n_01052`
-- `mare_demo.logs:log_n_03087`
-- `mare_demo.logs:log_n_00790`
-- `mare_demo.logs:log_n_03922`
+- `mare_demo.deployments:dep_n_0045`
+- `mare_demo.deployments:dep_n_0119`
+- `mare_demo.deployments:dep_n_0355`
+- `mare_demo.deployments:dep_apex_mar`
+- `mare_demo.deployments:dep_apex_apr`
+- `mare_demo.deployments:dep_n_0374`
+- `mare_demo.incidents:inc_apex_mar`
+- `mare_demo.incidents:inc_apex_apr`
+- `mare_demo.incidents:inc_20026`
+- `mare_demo.incidents:inc_20074`
+- `mare_demo.logs:log_n_00262`
+- `mare_demo.logs:log_apex_mar_1`
+- `mare_demo.logs:log_apex_mar_2`
+- `mare_demo.logs:log_n_01030`
+- `mare_demo.logs:log_n_03145`
+- `mare_demo.logs:log_n_00807`
 
-Gold hits: deployments:dep_apex_fail_1, logs:log_1001, migrations:mig_auth_sso
-Missed gold: customers:cust_007, deployments:dep_apex_fail_2, incidents:inc_1001, logs:log_1002, tickets:tkt_1001
+Gold hits: incidents:inc_1001, migrations:mig_auth_sso
+Missed gold: customers:cust_007, deployments:dep_apex_fail_1, deployments:dep_apex_fail_2, logs:log_1001, logs:log_1002, tickets:tkt_1001
 
 ## RAG answer
 
-Most likely root cause
-- A stale AUTH_ISSUER configuration still pointing to https://auth-v2.apex.io after the SSO cutover to https://auth-v3.apex.io, causing JWT issuer mismatches and 401s, particularly on the deployer. [incidents inc_1001], [migrations mig_auth_sso], [logs log_1002]
+Most likely root cause:
+- The SSO migration changed the issuer to https://auth-v3.apex.io, but Apex’s deployment/auth config kept a stale AUTH_ISSUER still pointing to auth-v2, causing token validation to fail. [migrations mig_auth_sso], [incidents inc_1001]
 
-Evidence
-- Migration required updating AUTH_ISSUER to https://auth-v3.apex.io; legacy issuer would reject tokens. [migrations mig_auth_sso]
-- Failures started immediately after the SSO migration with AUTH_401 errors. [tickets tkt_1001], [deployments dep_apex_fail_1], [deployments dep_apex_fail_2]
-- Auth-service log shows issuer mismatch: expected v3, got v2. [logs log_1001]
-- Deployer log shows token validation attempted against AUTH_ISSUER https://auth-v2.apex.io, indicating stale config on the deployer. [logs log_1002]
-- Incident record identifies root cause as stale AUTH_ISSUER still pointing at auth-v2 after the issuer cutover. [incidents inc_1001]
+Evidence:
+- Migration notes require updating AUTH_ISSUER to https://auth-v3.apex.io; legacy issuer will reject tokens. [migrations mig_auth_sso]
+- Incident explicitly calls out “stale AUTH_ISSUER still pointing at auth-v2 after SSO issuer cutover” and links the failing deployments. [incidents inc_1001]
+- Failed deployments show AUTH_401 and “unauthorized issuer” during rollout. [deployments dep_apex_fail_1], [deployments dep_apex_fail_2]
+- Ticket states the failures started right after the SSO migration. [tickets tkt_1001]
 
 ### Citations
 
@@ -100,12 +102,12 @@ Evidence
 - `mare_demo.deployments:dep_apex_fail_2`
 - `mare_demo.deployments:dep_apex_fail_1`
 - `mare_demo.migrations:mig_auth_sso`
-- `mare_demo.deployments:dep_quilt_1`
-- `mare_demo.logs:log_1002`
-- `mare_demo.logs:log_1001`
+- `mare_demo.deployments:dep_ns_stale`
+- `mare_demo.deployments:dep_apex_apr`
+- `mare_demo.deployments:dep_apex_mar`
 
-Gold hits: deployments:dep_apex_fail_1, deployments:dep_apex_fail_2, incidents:inc_1001, logs:log_1001, logs:log_1002, migrations:mig_auth_sso, tickets:tkt_1001
-Missed gold: customers:cust_007
+Gold hits: deployments:dep_apex_fail_1, deployments:dep_apex_fail_2, incidents:inc_1001, migrations:mig_auth_sso, tickets:tkt_1001
+Missed gold: customers:cust_007, logs:log_1001, logs:log_1002
 
 ## MARE answer (informed)
 

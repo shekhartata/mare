@@ -639,9 +639,276 @@
       ],
       "no_foreign_incident_cites": true,
       "allowed_incident_cites": [
-        "inc_20006",
-        "inc_20051",
-        "inc_20096"
+        "inc_20015",
+        "inc_20060",
+        "inc_20105"
+      ]
+    },
+    {
+      "id": "dist_northstar_identity",
+      "class": "distributed",
+      "question": "Why did Northstar begin experiencing intermittent authentication failures after recent platform changes?",
+      "gold_answer": "Northstar Payments (cust_012) kept the previous authentication configuration after the identity platform cutover (mig_ns_identity) set a new OIDC issuer. Token validation then rejected requests because the issuer did not match.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_ns_login"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_ns_identity"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_ns_stale"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_ns_jwt"
+        }
+      ],
+      "story_id": "identity_oidc",
+      "required_evidence_count": 4,
+      "must_contain_groups": [
+        [
+          "northstar",
+          "cust_012"
+        ],
+        [
+          "oidc",
+          "identity"
+        ],
+        [
+          "previous",
+          "stale",
+          "old",
+          "retained"
+        ],
+        [
+          "issuer",
+          "jwt",
+          "token"
+        ]
+      ]
+    },
+    {
+      "id": "vk_apex_small",
+      "class": "variable_k",
+      "question": "What caused Apex's most recent authentication incident?",
+      "gold_answer": "The most recent Apex (cust_007) authentication incident (inc_1001) is the May production auth failure after the SSO cutover; logs show jwt issuer mismatch (log_1001).",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1001"
+        }
+      ],
+      "story_id": "auth_sso",
+      "required_evidence_count": 2,
+      "must_contain_groups": [
+        [
+          "apex",
+          "cust_007"
+        ],
+        [
+          "auth",
+          "issuer",
+          "401",
+          "sso"
+        ]
+      ]
+    },
+    {
+      "id": "vk_apex_medium",
+      "class": "variable_k",
+      "question": "What sequence of events caused Apex's authentication problems during the May migration?",
+      "gold_answer": "In May, mig_auth_sso changed AUTH_ISSUER to auth-v3. Apex production deployments dep_apex_fail_1 and dep_apex_fail_2 then failed with AUTH_401; ticket tkt_1001, incident inc_1001, and logs log_1001/log_1002 document the jwt issuer mismatch.",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_auth_sso"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1002"
+        }
+      ],
+      "story_id": "auth_sso",
+      "required_evidence_count": 7,
+      "must_contain_groups": [
+        [
+          "apex",
+          "cust_007"
+        ],
+        [
+          "mig_auth_sso",
+          "issuer",
+          "auth-v3",
+          "sso"
+        ],
+        [
+          "auth_401",
+          "401",
+          "fail"
+        ]
+      ]
+    },
+    {
+      "id": "vk_apex_deep",
+      "class": "variable_k",
+      "question": "What recurring factors explain Apex's authentication failures across the last three months, and how did the failure mode evolve?",
+      "gold_answer": "Apex (cust_007) authentication problems evolved: March idle-session timeouts (SESSION_EXPIRED / cookie max-age), April shortened ACCESS_TOKEN_TTL_SEC (TOKEN_TTL), then May SSO issuer mismatch after mig_auth_sso (AUTH_401).",
+      "gold_sources": [
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_apex_mar"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_apex_mar"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_mar"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_apex_mar_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_apex_mar_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_apex_apr"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_apex_apr"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_apr"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_apex_apr_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_apex_apr_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_apex_apr_3"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "migrations",
+          "document_id": "mig_auth_sso"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_1"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "deployments",
+          "document_id": "dep_apex_fail_2"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "tickets",
+          "document_id": "tkt_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "incidents",
+          "document_id": "inc_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1001"
+        },
+        {
+          "database": "mare_demo",
+          "collection": "logs",
+          "document_id": "log_1002"
+        }
+      ],
+      "story_id": "auth_sso",
+      "required_evidence_count": 18,
+      "must_contain_groups": [
+        [
+          "apex",
+          "cust_007"
+        ],
+        [
+          "timeout",
+          "idle",
+          "session",
+          "cookie"
+        ],
+        [
+          "ttl",
+          "token"
+        ],
+        [
+          "issuer",
+          "sso",
+          "auth_401",
+          "mig_auth_sso"
+        ]
       ]
     }
   ]

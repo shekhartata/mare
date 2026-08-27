@@ -339,6 +339,142 @@ def _stories(rng: random.Random) -> tuple[list[Story], dict[str, list[dict[str, 
     )
     stories.append(s1)
 
+    # --- Apex auth precursors (March timeout, April token TTL) for variable-K ---
+    tickets.append(
+        _ticket(
+            "tkt_apex_mar",
+            "cust_007",
+            datetime(2024, 3, 8, 15, 40),
+            "Users dropped from dashboard after sitting idle",
+            "Apex operators say the console logs them out if they step away for lunch. "
+            "They have to sign in again. Started this week on prod.",
+            "resolved",
+            "medium",
+            "authentication",
+        )
+    )
+    incidents.append(
+        _incident(
+            "inc_apex_mar",
+            "cust_007",
+            datetime(2024, 3, 8, 16, 10),
+            "Idle sessions ending early",
+            "Prod sessions for Apex end after a short idle period. Operators report sudden logouts, "
+            "not password failures.",
+            "sev-3",
+            ["tkt_apex_mar"],
+            ["dep_apex_mar"],
+            "session idle-timeout was shortened on the dashboard cookie",
+        )
+    )
+    deployments.append(
+        _deployment(
+            "dep_apex_mar",
+            "cust_007",
+            datetime(2024, 3, 7, 11, 0),
+            "success",
+            None,
+            None,
+            "dashboard cookie max-age reduced; SESSION_IDLE_TIMEOUT_SEC set to 900",
+        )
+    )
+    logs.extend(
+        [
+            _log(
+                "log_apex_mar_1",
+                "cust_007",
+                datetime(2024, 3, 8, 13, 5),
+                "auth-service",
+                "WARN",
+                "session cookie expired after idle period; SESSION_IDLE_TIMEOUT_SEC=900",
+                "dep_apex_mar",
+                "SESSION_EXPIRED",
+            ),
+            _log(
+                "log_apex_mar_2",
+                "cust_007",
+                datetime(2024, 3, 8, 14, 22),
+                "api-gateway",
+                "INFO",
+                "rejected request: dashboard session cookie expired for operator workspace",
+                "dep_apex_mar",
+                "SESSION_EXPIRED",
+            ),
+        ]
+    )
+    tickets.append(
+        _ticket(
+            "tkt_apex_apr",
+            "cust_007",
+            datetime(2024, 4, 16, 9, 30),
+            "Integrations keep prompting for sign-in during the workday",
+            "Apex batch jobs that used to run for hours now stop and ask for a new sign-in "
+            "every so often. Worse than last month's idle-logout reports.",
+            "open",
+            "high",
+            "authentication",
+        )
+    )
+    incidents.append(
+        _incident(
+            "inc_apex_apr",
+            "cust_007",
+            datetime(2024, 4, 16, 10, 5),
+            "Short-lived access tokens interrupting jobs",
+            "Apex worker jobs fail mid-run and require a fresh sign-in. Pattern matches a shorter "
+            "access-token lifetime, not an idle cookie.",
+            "sev-2",
+            ["tkt_apex_apr"],
+            ["dep_apex_apr"],
+            "ACCESS_TOKEN_TTL_SEC reduced; jobs outlive the token",
+        )
+    )
+    deployments.append(
+        _deployment(
+            "dep_apex_apr",
+            "cust_007",
+            datetime(2024, 4, 15, 18, 20),
+            "success",
+            None,
+            None,
+            "auth-service ACCESS_TOKEN_TTL_SEC changed from 14400 to 1800",
+        )
+    )
+    logs.extend(
+        [
+            _log(
+                "log_apex_apr_1",
+                "cust_007",
+                datetime(2024, 4, 16, 8, 40),
+                "auth-service",
+                "WARN",
+                "access token expired before job completed; ACCESS_TOKEN_TTL_SEC=1800",
+                "dep_apex_apr",
+                "TOKEN_TTL",
+            ),
+            _log(
+                "log_apex_apr_2",
+                "cust_007",
+                datetime(2024, 4, 16, 9, 12),
+                "billing-worker",
+                "ERROR",
+                "re-authentication required: access token TTL elapsed during invoice export",
+                "dep_apex_apr",
+                "TOKEN_TTL",
+            ),
+            _log(
+                "log_apex_apr_3",
+                "cust_007",
+                datetime(2024, 4, 16, 11, 3),
+                "scheduler",
+                "ERROR",
+                "job aborted: token lifetime shorter than scheduled window",
+                "dep_apex_apr",
+                "TOKEN_TTL",
+            ),
+        ]
+    )
+
     # --- 2. Billing webhook (Northstar Payments cust_012) ---
     s2 = Story(
         story_id="billing_webhook",
@@ -442,6 +578,61 @@ def _stories(rng: random.Random) -> tuple[list[Story], dict[str, list[dict[str, 
         ("customers", "cust_012"),
     )
     stories.append(s2)
+
+    # --- Northstar identity cutover: distributed evidence (no single record has the cause) ---
+    tickets.append(
+        _ticket(
+            "tkt_ns_login",
+            "cust_012",
+            datetime(2024, 6, 4, 10, 15),
+            "Intermittent login failures after recent platform changes",
+            "Northstar staff report they sometimes cannot sign in to production after last week's "
+            "platform work. Failures come and go. No invoice or billing symptoms.",
+            "open",
+            "high",
+            "authentication",
+        )
+    )
+    migrations.append(
+        _base(
+            _id="mig_ns_identity",
+            migration_id="mig_ns_identity",
+            customer_id="cust_012",
+            from_version="identity-2.1",
+            to_version="identity-3.0",
+            started_at=datetime(2024, 6, 3, 7, 0),
+            completed_at=datetime(2024, 6, 3, 9, 30),
+            status="completed",
+            notes=(
+                "Identity platform cutover. OIDC issuer URL is now "
+                "https://id.northstar.test/realms/prod. Update relying parties before the next release."
+            ),
+            config_changes={"OIDC_ISSUER": "https://id.northstar.test/realms/prod"},
+        )
+    )
+    deployments.append(
+        _deployment(
+            "dep_ns_stale",
+            "cust_012",
+            datetime(2024, 6, 4, 8, 10),
+            "success",
+            None,
+            None,
+            "auth-service rollout kept the previous authentication configuration in the runtime map",
+        )
+    )
+    logs.append(
+        _log(
+            "log_ns_jwt",
+            "cust_012",
+            datetime(2024, 6, 4, 8, 18),
+            "auth-service",
+            "ERROR",
+            "token validation rejected because issuer did not match expected value",
+            "dep_ns_stale",
+            None,
+        )
+    )
 
     # --- 3. TLS after region move (Harbor Health cust_019) ---
     s3 = Story(
@@ -1416,7 +1607,9 @@ def _capability_queries(
     """Queries where chunk-everything Top-K RAG is structurally weak.
 
     These do not name the downstream entity IDs (bridge), require a full-collection
-    count (aggregation), or require proving absence (negative).
+    count (aggregation), require proving absence (negative), split the cause across
+    records (distributed), or need a gold set whose size is not known in advance
+    (variable_k).
     """
     enterprise = [c for c in customers if c.get("subscription_tier") == "enterprise"]
     cedar_incidents = [inc for inc in incidents if inc.get("customer_id") == "cust_004"]
@@ -1499,5 +1692,123 @@ def _capability_queries(
             "must_not_contain": ["inc_1001", "apex logistics"],
             "no_foreign_incident_cites": True,
             "allowed_incident_cites": [inc["_id"] for inc in cedar_incidents],
+        },
+        {
+            "id": "dist_northstar_identity",
+            "class": "distributed",
+            "question": (
+                "Why did Northstar begin experiencing intermittent authentication "
+                "failures after recent platform changes?"
+            ),
+            "gold_answer": (
+                "Northstar Payments (cust_012) kept the previous authentication configuration "
+                "after the identity platform cutover (mig_ns_identity) set a new OIDC issuer. "
+                "Token validation then rejected requests because the issuer did not match."
+            ),
+            "gold_sources": [
+                {"database": RAW_DB, "collection": "tickets", "document_id": "tkt_ns_login"},
+                {"database": RAW_DB, "collection": "migrations", "document_id": "mig_ns_identity"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_ns_stale"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_ns_jwt"},
+            ],
+            "story_id": "identity_oidc",
+            "required_evidence_count": 4,
+            "must_contain_groups": [
+                ["northstar", "cust_012"],
+                ["oidc", "identity"],
+                ["previous", "stale", "old", "retained"],
+                ["issuer", "jwt", "token"],
+            ],
+        },
+        {
+            "id": "vk_apex_small",
+            "class": "variable_k",
+            "question": "What caused Apex's most recent authentication incident?",
+            "gold_answer": (
+                "The most recent Apex (cust_007) authentication incident (inc_1001) is the May "
+                "production auth failure after the SSO cutover; logs show jwt issuer mismatch "
+                "(log_1001)."
+            ),
+            "gold_sources": [
+                {"database": RAW_DB, "collection": "incidents", "document_id": "inc_1001"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_1001"},
+            ],
+            "story_id": "auth_sso",
+            "required_evidence_count": 2,
+            "must_contain_groups": [
+                ["apex", "cust_007"],
+                ["auth", "issuer", "401", "sso"],
+            ],
+        },
+        {
+            "id": "vk_apex_medium",
+            "class": "variable_k",
+            "question": (
+                "What sequence of events caused Apex's authentication problems during "
+                "the May migration?"
+            ),
+            "gold_answer": (
+                "In May, mig_auth_sso changed AUTH_ISSUER to auth-v3. Apex production "
+                "deployments dep_apex_fail_1 and dep_apex_fail_2 then failed with AUTH_401; "
+                "ticket tkt_1001, incident inc_1001, and logs log_1001/log_1002 document the "
+                "jwt issuer mismatch."
+            ),
+            "gold_sources": [
+                {"database": RAW_DB, "collection": "migrations", "document_id": "mig_auth_sso"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_fail_1"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_fail_2"},
+                {"database": RAW_DB, "collection": "tickets", "document_id": "tkt_1001"},
+                {"database": RAW_DB, "collection": "incidents", "document_id": "inc_1001"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_1001"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_1002"},
+            ],
+            "story_id": "auth_sso",
+            "required_evidence_count": 7,
+            "must_contain_groups": [
+                ["apex", "cust_007"],
+                ["mig_auth_sso", "issuer", "auth-v3", "sso"],
+                ["auth_401", "401", "fail"],
+            ],
+        },
+        {
+            "id": "vk_apex_deep",
+            "class": "variable_k",
+            "question": (
+                "What recurring factors explain Apex's authentication failures across the "
+                "last three months, and how did the failure mode evolve?"
+            ),
+            "gold_answer": (
+                "Apex (cust_007) authentication problems evolved: March idle-session timeouts "
+                "(SESSION_EXPIRED / cookie max-age), April shortened ACCESS_TOKEN_TTL_SEC "
+                "(TOKEN_TTL), then May SSO issuer mismatch after mig_auth_sso (AUTH_401)."
+            ),
+            "gold_sources": [
+                {"database": RAW_DB, "collection": "tickets", "document_id": "tkt_apex_mar"},
+                {"database": RAW_DB, "collection": "incidents", "document_id": "inc_apex_mar"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_mar"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_apex_mar_1"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_apex_mar_2"},
+                {"database": RAW_DB, "collection": "tickets", "document_id": "tkt_apex_apr"},
+                {"database": RAW_DB, "collection": "incidents", "document_id": "inc_apex_apr"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_apr"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_apex_apr_1"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_apex_apr_2"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_apex_apr_3"},
+                {"database": RAW_DB, "collection": "migrations", "document_id": "mig_auth_sso"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_fail_1"},
+                {"database": RAW_DB, "collection": "deployments", "document_id": "dep_apex_fail_2"},
+                {"database": RAW_DB, "collection": "tickets", "document_id": "tkt_1001"},
+                {"database": RAW_DB, "collection": "incidents", "document_id": "inc_1001"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_1001"},
+                {"database": RAW_DB, "collection": "logs", "document_id": "log_1002"},
+            ],
+            "story_id": "auth_sso",
+            "required_evidence_count": 18,
+            "must_contain_groups": [
+                ["apex", "cust_007"],
+                ["timeout", "idle", "session", "cookie"],
+                ["ttl", "token"],
+                ["issuer", "sso", "auth_401", "mig_auth_sso"],
+            ],
         },
     ]
