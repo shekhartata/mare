@@ -99,21 +99,57 @@ python scripts/run_scale_llm.py --n 10000 --strategy semantic --density 20 --per
 
 ```text
 Question → schema-blind tool loop
-              ├── Navigation  (where?)  →  navigation_nodes   ~1–11% as many vectors as RAG
+              ├── Navigation  (where?)  →  navigation_nodes   one vector per neighborhood
               └── Retrieval   (what?)   →  raw Mongo docs     find / filter / count / read
                          ↓
               answer + database.collection:document_id
 ```
 
-Nodes are pointers plus schema (`important_fields`, filters, `related_nodes`), not copied payloads. `related_nodes` is the hop: same entity, other collections, in one tool result.
+RAG embeds **content fragments** (every chunk). MARE embeds **neighborhood cards** that point at live Mongo. Raw documents stay in `mare_demo` / `mare_scale`; they are never copied into the vector store.
+
+### What gets a vector
+
+`build_hierarchy` writes a small tree into `navigation_nodes`:
+
+```text
+database
+  └── collection     schema: field names, examples, topics
+        └── group    a neighborhood (customer slice on the demo; semantic prototype at 10K)
+              └── optional document pointer   (tiny collections only)
+```
+
+Each node is a pointer (`database`, `collection`, `filter` / `document_ids`) plus a compact `search_text` string: name, collection, summary, important fields, entity ids, topic terms. **Not** the full document body.
+
+Atlas then indexes that card twice, both on `search_text`:
+
+| Index | Type | What it is |
+| --- | --- | --- |
+| `nav_lexical` | Atlas Search (`$search`) | Inverted index for ids, error codes, names |
+| `nav_vector` | Vector Search (`$vectorSearch`) | **One** `voyage-4-lite` autoEmbed vector per node |
+
+So 10K incidents → ~604 nav vectors vs ~60,000 chunk vectors. Demo: 616 vs 5,424. Same embedding model as RAG; far fewer rows because the unit is a neighborhood, not a chunk.
+
+If autoEmbed is unavailable, MARE falls back to app-side embeddings. `scripts/probe_capabilities.py` records which path is active.
+
+### How a question is answered
+
+1. A small router picks lexical / semantic / hybrid (`$rankFusion` or RRF) from the question shape.
+2. `search_information` runs that search **only on `navigation_nodes`**. Hits are groups and collections, with `important_fields` and **`related_nodes`** (same entity, other collections) — that is the hop.
+3. `retrieve_evidence` expands the node with `find` on the **source** collection. Full records, no extra vectors. Inside a group, `search_within` is lexical on the raw docs scoped by the node’s filter.
+4. Once a field name has been seen, `query_documents` can count, filter, or return zero rows. `submit_answer` cites `database.collection:document_id`.
+
+```text
+query → hybrid on node search_text (hundreds of vectors)
+      → pick neighborhoods
+      → find / filter / read raw Mongo (no vectors)
+      → answer
+```
 
 | Database | Role |
 | --- | --- |
-| `mare_demo` / `mare_scale` | System of record. Never copied into the index. |
+| `mare_demo` / `mare_scale` | System of record. Untouched. |
 | `_agent_retrieval` / `_agent_scale_*` | Navigation nodes, sessions, traces. |
-| `_rag_baseline` / `_rag_scale_*` | Chunk RAG, same embedding model (`voyage-4-lite` autoEmbed). |
-
-Atlas: `$search`, `$vectorSearch`, `$rankFusion` when available. Fallback: app-side embeddings. Probe with `scripts/probe_capabilities.py`.
+| `_rag_baseline` / `_rag_scale_*` | Chunk RAG, same autoEmbed model. |
 
 ```bash
 pytest -q
