@@ -29,6 +29,8 @@ def main() -> None:
     budget = 10
     split = "heldout"
     engine = "both"
+    density: int | None = None
+    strategy: str | None = None
     if "--n" in sys.argv:
         n = int(sys.argv[sys.argv.index("--n") + 1])
     if "--budget" in sys.argv:
@@ -37,13 +39,26 @@ def main() -> None:
         split = sys.argv[sys.argv.index("--split") + 1]
     if "--engine" in sys.argv:
         engine = sys.argv[sys.argv.index("--engine") + 1]
+    if "--density" in sys.argv:
+        density = int(sys.argv[sys.argv.index("--density") + 1])
+    if "--strategy" in sys.argv:
+        strategy = sys.argv[sys.argv.index("--strategy") + 1]
     ping()
     queries = load_gold(GOLD, split=None if split == "all" else split)
     client = get_client()
     source = client[SCALE_RAW_DB][SCALE_COLLECTION]
-    nodes = client[scale_agent_db_name(n)][NAV_NODES]
+    agent_db = scale_agent_db_name(n, density, strategy)
+    nodes = client[agent_db][NAV_NODES]
     chunks = client[scale_rag_db_name(n)][RAG_CHUNKS]
-    payload: dict = {"n": n, "budget": budget, "split": split, "n_queries": len(queries)}
+    payload: dict = {
+        "n": n,
+        "budget": budget,
+        "split": split,
+        "density": density,
+        "strategy": strategy,
+        "n_queries": len(queries),
+        "agent_db": agent_db,
+    }
     if engine in {"mare", "both"}:
         payload["mare"] = evaluate_queries(
             queries,
@@ -61,7 +76,18 @@ def main() -> None:
             tenant_id=SCALE_TENANT,
             chunks=chunks,
         )
-    out = Path(__file__).resolve().parents[1] / "reports" / "scale" / f"retrieval_{n}_k{budget}_{split}.json"
+    bits = []
+    if strategy:
+        bits.append(strategy)
+    if density is not None:
+        bits.append(f"d{density}")
+    suffix = ("_" + "_".join(bits)) if bits else ""
+    out = (
+        Path(__file__).resolve().parents[1]
+        / "reports"
+        / "scale"
+        / f"retrieval_{n}_k{budget}_{split}{suffix}.json"
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     # Keep the markdown-friendly summary without per-query dump unless --full.
     summary = {k: v for k, v in payload.items() if k not in {"mare", "rag"}}

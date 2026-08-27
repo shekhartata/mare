@@ -1,0 +1,75 @@
+{
+  "n": 10000,
+  "budget": 10,
+  "split": "heldout",
+  "density": 20,
+  "n_queries": 197,
+  "agent_db": "_agent_scale_10000_d20",
+  "mare": {
+    "engine": "mare",
+    "budget": 10,
+    "n": 197,
+    "overall": {
+      "recall": 0.1188,
+      "precision": 0.1239,
+      "mrr": 0.3417,
+      "ndcg": 0.1617
+    },
+    "by_category": {
+      "direct_semantic": {
+        "recall": 0.151,
+        "precision": 0.1812,
+        "mrr": 0.4633,
+        "ndcg": 0.2135
+      },
+      "fine_grained": {
+        "recall": 0.0455,
+        "precision": 0.0455,
+        "mrr": 0.1364,
+        "ndcg": 0.0491
+      },
+      "paraphrase": {
+        "recall": 0.0985,
+        "precision": 0.1182,
+        "mrr": 0.3229,
+        "ndcg": 0.1476
+      },
+      "rare": {
+        "recall": 0.2143,
+        "precision": 0.1714,
+        "mrr": 0.416,
+        "ndcg": 0.2405
+      },
+      "similar_distractors": {
+        "recall": 0.0638,
+        "precision": 0.0257,
+        "mrr": 0.1746,
+        "ndcg": 0.0819
+      }
+    },
+    "by_tier": {
+      "common": {
+        "recall": 0.0373,
+        "precision": 0.0225,
+        "mrr": 0.1655,
+        "ndcg": 0.0567
+      },
+      "medium": {
+        "recall": 0.0489,
+        "precision": 0.0578,
+        "mrr": 0.1806,
+        "ndcg": 0.0648
+      },
+      "rare": {
+        "recall": 0.253,
+        "precision": 0.2778,
+        "mrr": 0.6382,
+        "ndcg": 0.339
+      }
+    },
+    "latency_ms": {
+      "p50": 836.4,
+      "p95": 1460.4
+    }
+  }
+}

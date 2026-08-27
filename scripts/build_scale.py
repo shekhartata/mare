@@ -53,8 +53,9 @@ def main() -> None:
 
     ping()
     client = get_client()
+    skip_rag = "--skip-rag" in sys.argv
     extra_match = {"seq": {"$lt": n}}
-    agent_db_name = scale_agent_db_name(n)
+    agent_db_name = scale_agent_db_name(n, density, strategy)
     rag_db_name = scale_rag_db_name(n)
     source = client[SCALE_RAW_DB][SCALE_COLLECTION]
 
@@ -65,29 +66,33 @@ def main() -> None:
         collections=(SCALE_COLLECTION,),
         agent_database=agent_db_name,
         grouping_strategy=strategy,
-        target_docs_per_group=density if strategy == "topical" else None,
+        target_docs_per_group=density if strategy in {"topical", "semantic"} else None,
         extra_match=extra_match,
     )
     nav_ms = (time.perf_counter() - t0) * 1000
 
     chunks_coll = client[rag_db_name][RAG_CHUNKS]
-    chunks_coll.delete_many({"tenant_id": SCALE_TENANT})
-    t1 = time.perf_counter()
-    batch: list[dict] = []
-    total = 0
     texts: list[str] = []
-    for doc in source.find({"tenant_id": SCALE_TENANT, **extra_match}):
-        pieces = document_to_chunks(doc, SCALE_COLLECTION, chunk_size, overlap)
-        batch.extend(pieces)
-        texts.extend(p["text"] for p in pieces)
-        if len(batch) >= 400:
+    total = 0
+    rag_ms = 0.0
+    if skip_rag:
+        total = chunks_coll.count_documents({"tenant_id": SCALE_TENANT})
+    else:
+        chunks_coll.delete_many({"tenant_id": SCALE_TENANT})
+        t1 = time.perf_counter()
+        batch: list[dict] = []
+        for doc in source.find({"tenant_id": SCALE_TENANT, **extra_match}):
+            pieces = document_to_chunks(doc, SCALE_COLLECTION, chunk_size, overlap)
+            batch.extend(pieces)
+            texts.extend(p["text"] for p in pieces)
+            if len(batch) >= 400:
+                chunks_coll.insert_many(batch)
+                total += len(batch)
+                batch = []
+        if batch:
             chunks_coll.insert_many(batch)
             total += len(batch)
-            batch = []
-    if batch:
-        chunks_coll.insert_many(batch)
-        total += len(batch)
-    rag_ms = (time.perf_counter() - t1) * 1000
+        rag_ms = (time.perf_counter() - t1) * 1000
 
     create_lexical_index(source, RAW_LEXICAL_INDEX)
     caps = capabilities_or_default()
@@ -95,7 +100,11 @@ def main() -> None:
     idx = ensure_nav_and_rag_indexes(nav, chunks_coll, auto_embed=caps.auto_embed)
     t2 = time.perf_counter()
     nav_ready = wait_for_indexes(nav, [NAV_LEXICAL_INDEX, NAV_VECTOR_INDEX], timeout_s=900)
-    rag_ready = wait_for_indexes(chunks_coll, [RAG_LEXICAL_INDEX, RAG_VECTOR_INDEX], timeout_s=900)
+    rag_ready = {"skipped": True}
+    if not skip_rag:
+        rag_ready = wait_for_indexes(
+            chunks_coll, [RAG_LEXICAL_INDEX, RAG_VECTOR_INDEX], timeout_s=900
+        )
     wait_ms = (time.perf_counter() - t2) * 1000
 
     nav_texts = [d.get("search_text") or "" for d in nav.find({"tenant_id": SCALE_TENANT}, {"search_text": 1})]
@@ -111,9 +120,10 @@ def main() -> None:
         "rag_build_ms": round(rag_ms, 1),
         "index_wait_ms": round(wait_ms, 1),
         "indexes": {"nav": nav_ready, "rag": rag_ready, **idx},
+        "skip_rag": skip_rag,
         "embedding_tokens_est": {
             "mare_nav": estimate_embedding_tokens(nav_texts),
-            "rag_chunks": estimate_embedding_tokens(texts),
+            "rag_chunks": estimate_embedding_tokens(texts) if texts else None,
         },
         "footprint": footprint_report(
             agent_db=client[agent_db_name],

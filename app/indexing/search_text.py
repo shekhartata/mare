@@ -24,7 +24,7 @@ def compose_search_text(
         description,
         summary,
         " ".join(important_fields),
-        " ".join(entities[:30]),
+        " ".join(entities[:40]),
         " ".join(topics),
         " ".join(representative_terms or []),
     ]

@@ -248,7 +248,7 @@ python scripts/run_benchmark.py
 python scripts/run_benchmark.py --class complex_multihop
 ```
 
-Scale / vector-efficiency (retrieval only, no LLM). Gold lives in `benchmarks/scale/gold_queries.json`. Do not put a quality-vs-vectors claim in this README until held-out measurements exist.
+Scale / vector-efficiency (10K). Two results, kept separate: the navigation index does **not** match RAG Recall@10 (0.137 vs 0.230); a 20-query LLM-on sample matched answer needles (19/20 vs 18/20) at ~1% of RAG vectors, with higher latency and tokens. Gold: `benchmarks/scale/gold_queries.json`. Write-up: [reports/scale/README.md](reports/scale/README.md).
 
 ```bash
 python scripts/seed_scale.py --n 10000

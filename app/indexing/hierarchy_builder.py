@@ -11,6 +11,7 @@ from app.indexing.grouping import customer_groups, customer_month_groups
 from app.indexing.schema_discovery import discover_schema
 from app.indexing.search_text import COLLECTION_TOPICS, compose_search_text
 from app.indexing.summaries import summarize_collection, summarize_database, summarize_group
+from app.indexing.semantic_grouping import semantic_groups_from_docs
 from app.indexing.topical_grouping import grouping_projection, topical_groups_from_docs
 from app.llm import get_reasoning_model
 from app.llm.heuristic import HeuristicReasoningModel
@@ -227,10 +228,17 @@ def _groups_for(
     target_docs_per_group: int | None = None,
     extra_match: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    if strategy == "topical":
+    if strategy in {"topical", "semantic"}:
         match = {"tenant_id": tenant_id, **(extra_match or {})}
         docs = list(coll.find(match, grouping_projection()))
-        target = int(target_docs_per_group or 100)
+        target = int(target_docs_per_group or (20 if strategy == "semantic" else 100))
+        if strategy == "semantic":
+            return semantic_groups_from_docs(
+                docs,
+                tenant_id=tenant_id,
+                collection=name,
+                target_docs_per_group=target,
+            )
         return topical_groups_from_docs(
             docs,
             tenant_id=tenant_id,

@@ -34,11 +34,14 @@ ALLOWED_DBS = {RAW_DB, AGENT_DB, RAG_DB, SCALE_RAW_DB}
 
 def allowed_databases() -> set[str]:
     dbs = set(ALLOWED_DBS)
-    from app.constants import SCALE_SLICES
+    from app.constants import SCALE_DENSITIES, SCALE_SLICES
 
     for n in SCALE_SLICES:
         dbs.add(scale_agent_db_name(n))
         dbs.add(scale_rag_db_name(n))
+        for density in SCALE_DENSITIES:
+            dbs.add(scale_agent_db_name(n, density))
+            dbs.add(scale_agent_db_name(n, density, "semantic"))
     return dbs
 
 

@@ -1,15 +1,14 @@
-# Index footprint (pilot, 10K)
+# Index footprint (10K)
 
-From `build_10000_topical_100_512.json`. Embedding tokens are **estimated** from character counts (Atlas `autoEmbed` is not metered). Index bytes are **estimated** as `vectors × 1024 × 4`. `storageSize` is measured collection bytes.
+Embedding tokens are **estimated** from character counts (Atlas `autoEmbed` is not metered). Index bytes are **estimated** as `vectors × 1024 × 4`. `storageSize` is measured collection bytes. RAG column is the original chunk-512 build (`build_10000_topical_100_512.json`).
 
-| | MARE nav | RAG chunks |
-| --- | ---: | ---: |
-| Persistent vectors | 418 | 60,000 |
-| Ratio | 0.7% | 100% |
-| Est. index bytes | 1.7 MB | 246 MB |
-| Measured storageSize | 340 KB | 6.7 MB |
-| Est. embedding tokens | 78k | 6.9M |
-| Build wall-clock | 2.2s nodes | 11s chunk insert |
-| autoEmbed index wait | ~3 min (both indexes) | ~3 min |
+| | d=10 | d=20 | d=50 | d=100 | RAG chunks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Persistent vectors | 1,513 | 947 | 664 | 418 | 60,000 |
+| vs RAG | 2.5% | 1.6% | 1.1% | 0.7% | 100% |
+| Est. index bytes | 6.2 MB | 3.9 MB | 2.7 MB | 1.7 MB | 246 MB |
+| Est. nav embed tokens | 212k | 151k | 114k | 78k | 6.9M |
+| Nav index wait | ~67s | ~72s | ~56s | ~3 min (with RAG) | ~3 min |
 
-Extrapolation: 100K at the same chunking is ~600K RAG vectors. Index wait will dominate. Gate 50K/100K on whether you want a 20–40 minute embed cycle on this M30.
+The 10K RAG index wait remains the slow step. Nav-only rebuilds for the density sweep were about one minute each. 100K at the same chunking is still ~600K RAG vectors; do not spend that cycle until navigation quality is in range of RAG.
+
