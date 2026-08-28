@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package acgc.v1;
+
+option go_package = "github.com/shekhartata/acgcProject/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// ---------------------------------------------------------------------------
+// ACGC gRPC Service
+// ---------------------------------------------------------------------------
+
+service ACGCService {
+  // Full intercept-compile-forward cycle.
+  rpc Run(RunRequest) returns (RunResponse);
+
+  // Capture a single event (lower-level usage).
+  rpc CaptureEvent(CaptureEventRequest) returns (CaptureEventResponse);
+
+  // Inspect the current state tree for a session.
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+
+  // Manually trigger garbage collection for a session.
+  rpc TriggerGC(TriggerGCRequest) returns (TriggerGCResponse);
+
+  // Get token savings and other metrics for a session.
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Run
+// ---------------------------------------------------------------------------
+
+message RunRequest {
+  string session_id = 1;
+  string task_id = 2;
+  string user_message = 3;
+  int32 token_budget = 4;
+  reserved 5;
+  reserved "policy";
+  LLMConfig llm_config = 6;
+  repeated Message conversation_history = 7;
+}
+
+message LLMConfig {
+  string provider = 1;  // "openai", "anthropic", "ollama", etc.
+  string model = 2;
+  string api_key = 3;
+  string base_url = 4;
+  float temperature = 5;
+  int32 max_tokens = 6;
+}
+
+message Message {
+  string role = 1;    // "system", "user", "assistant", "tool"
+  string content = 2;
+  string name = 3;
+  string tool_call_id = 4;
+}
+
+message RunResponse {
+  string llm_response = 1;
+  PromptStats stats = 2;
+  string compiled_prompt_id = 3;
+  RunLatency latency_breakdown = 4;
+}
+
+message RunLatency {
+  // Wall-clock-ish compile phase (covers full CompilePrompt in the gateway hot path).
+  int32 compile_total_ms = 1;
+  int32 compile_embed_ms = 2;
+  int32 compile_index_ms = 3;
+  int32 compile_assembly_ms = 4;
+  // Reserved small bucket for string join/token estimate overhead; typically 0.
+  int32 compose_overhead_ms = 5;
+  int32 llm_ms = 6;
+  // True when heuristic compile was used due to semantic path unavailable or failures.
+  bool semantic_fallback = 7;
+}
+
+message PromptStats {
+  int32 original_token_count = 1;
+  int32 compiled_token_count = 2;
+  int32 tokens_saved = 3;
+  float reduction_percent = 4;
+  bool gc_triggered = 5;
+  string gc_reason = 6;
+  int32 active_nodes = 7;
+  int32 compressed_nodes = 8;
+  int32 archived_nodes = 9;
+  // Provider-reported prefix cache hits (OpenAI: prompt_tokens_details.cached_tokens). 0 when not reported.
+  int32 cached_prompt_tokens = 10;
+}
+
+// ---------------------------------------------------------------------------
+// CaptureEvent
+// ---------------------------------------------------------------------------
+
+message CaptureEventRequest {
+  string session_id = 1;
+  string task_id = 2;
+  string event_type = 3; // "user_prompt", "llm_response", "tool_call", "tool_result", "error", "system"
+  string payload = 4;
+  map<string, string> metadata = 5;
+}
+
+message CaptureEventResponse {
+  string event_id = 1;
+  bool accepted = 2;
+}
+
+// ---------------------------------------------------------------------------
+// GetState
+// ---------------------------------------------------------------------------
+
+message GetStateRequest {
+  string session_id = 1;
+  bool include_scores = 2;
+  bool include_compressed = 3;
+}
+
+message GetStateResponse {
+  string session_id = 1;
+  string task_id = 2;
+  repeated StateNode nodes = 3;
+  TreeStats tree_stats = 4;
+}
+
+message StateNode {
+  string node_id = 1;
+  string parent_id = 2;
+  string node_type = 3;  // "goal", "constraint", "decision", "attempt", "tool_result", "issue", "summary", "compressed_branch"
+  string title = 4;
+  string summary = 5;
+  repeated string facts = 6;
+  repeated string decisions = 7;
+  repeated string open_issues = 8;
+  repeated string dependencies = 9;
+  repeated string raw_event_refs = 10;
+  string status = 11;  // "active", "resolved", "stale", "compressed", "archived"
+  NodeScores scores = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message NodeScores {
+  float semantic_relevance = 1;
+  float recency = 2;
+  float dependency_weight = 3;
+  float redundancy = 4;
+  float retention_score = 5;
+}
+
+message TreeStats {
+  int32 total_nodes = 1;
+  int32 active_nodes = 2;
+  int32 compressed_nodes = 3;
+  int32 archived_nodes = 4;
+  int32 max_depth = 5;
+  int32 max_width = 6;
+}
+
+// ---------------------------------------------------------------------------
+// TriggerGC
+// ---------------------------------------------------------------------------
+
+message TriggerGCRequest {
+  string session_id = 1;
+  bool force = 2;
+}
+
+message TriggerGCResponse {
+  bool triggered = 1;
+  int32 nodes_swept = 2;
+  int32 branches_compressed = 3;
+  int32 tokens_freed = 4;
+  string reason = 5;
+}
+
+// ---------------------------------------------------------------------------
+// GetMetrics
+// ---------------------------------------------------------------------------
+
+message GetMetricsRequest {
+  string session_id = 1;
+}
+
+message GetMetricsResponse {
+  string session_id = 1;
+  int32 total_events = 2;
+  int32 total_turns = 3;
+  int32 gc_runs = 4;
+  int32 total_tokens_saved = 5;
+  float avg_reduction_percent = 6;
+  int32 branches_compressed = 7;
+  int32 rehydration_events = 8;
+  float avg_latency_overhead_ms = 9;
+  google.protobuf.Timestamp session_started_at = 10;
+}

@@ -64,6 +64,7 @@ def _session_blob(session) -> dict:
         "mongo_latency_ms": getattr(session, "mongo_latency_ms", 0) or 0,
         "citations": citations,
         "retrieved_docs": normalized or retrieved,
+        "acgc_stats": getattr(session, "acgc_stats", None) or {},
     }
 
 
@@ -79,6 +80,7 @@ def main() -> None:
     per_category = 4
     split = "heldout"
     engine = "both"
+    use_acgc = False
     if "--n" in sys.argv:
         n = int(sys.argv[sys.argv.index("--n") + 1])
     if "--density" in sys.argv:
@@ -91,13 +93,19 @@ def main() -> None:
         split = sys.argv[sys.argv.index("--split") + 1]
     if "--engine" in sys.argv:
         engine = sys.argv[sys.argv.index("--engine") + 1]
+    if "--acgc" in sys.argv:
+        use_acgc = True
 
     ping()
     settings = get_settings()
     agent_db_name = scale_agent_db_name(n, density, strategy)
     rag_db_name = scale_rag_db_name(n)
     queries = stratified_sample(load_gold(GOLD, split=None), per_category=per_category, split=split)
-    out = OUT_DIR / f"llm_on_{n}_{strategy}_d{density}_{split}.json"
+    out = OUT_DIR / (
+        f"llm_on_{n}_{strategy}_d{density}_{split}_acgc.json"
+        if use_acgc
+        else f"llm_on_{n}_{strategy}_d{density}_{split}.json"
+    )
     rows: list[dict] = []
     if out.exists() and "--resume" in sys.argv:
         prev = json.loads(out.read_text())
@@ -122,6 +130,9 @@ def main() -> None:
         "reasoning_effort": settings.openai_reasoning_effort,
         "max_agent_turns": settings.max_agent_turns,
         "schema_in_prompt": False,
+        "acgc": use_acgc,
+        "acgc_grpc_addr": settings.acgc_grpc_addr if use_acgc else None,
+        "acgc_token_budget": settings.acgc_token_budget if use_acgc else None,
         "note": "LLM-on end-to-end. Does not replace LLM-off retrieval reports.",
         "queries": rows,
     }
@@ -129,8 +140,14 @@ def main() -> None:
     print(
         f"LLM-on scale: {len(rows) + len(queries)} queries "
         f"agent={settings.openai_model_agent} answer={settings.openai_model} "
-        f"nav={agent_db_name} rag={rag_db_name}"
+        f"nav={agent_db_name} rag={rag_db_name} acgc={use_acgc}"
     )
+    if use_acgc:
+        from app.retrieval.acgc_sidecar import connect_sidecar
+
+        probe = connect_sidecar(settings.acgc_grpc_addr, "mare_acgc_probe")
+        probe.close()
+        print(f"ACGC sidecar ok at {settings.acgc_grpc_addr}")
     with override_namespaces(agent=agent_db_name, rag=rag_db_name):
         for i, q in enumerate(queries, start=1):
             print(f"[{i}/{len(queries)}] {q.get('query_id')} {q.get('category')}")
@@ -149,6 +166,7 @@ def main() -> None:
                         tenant_id=SCALE_TENANT,
                         persist=False,
                         schema_in_prompt=False,
+                        use_acgc=use_acgc,
                     )
                     row["mare"] = score_llm_blob(_session_blob(session), q)
                     print(

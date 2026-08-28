@@ -204,6 +204,7 @@ class EvidenceSession(BaseModel):
     citations: list[MongoRef] = Field(default_factory=list)
     retrieved_docs: list[dict[str, Any]] = Field(default_factory=list)
     hypothesis_versions: list[str] = Field(default_factory=list)
+    acgc_stats: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

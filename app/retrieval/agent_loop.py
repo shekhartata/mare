@@ -30,6 +30,7 @@ from app.models.schemas import (
 )
 from app.mongo.client import agent_db
 from app.observability.traces import write_trace
+from app.retrieval.context_compact import compact_messages, estimate_tokens, receipt_payload
 from app.retrieval.evidence import generate_answer
 from app.retrieval.loop import run_adaptive
 from app.retrieval.tools import TOOL_DEFINITIONS, default_handlers, dispatch_tool
@@ -106,6 +107,8 @@ def run_agent(
     reasoning_effort: str | None = None,
     answer_reasoner: ReasoningModel | None = None,
     schema_in_prompt: bool | None = None,
+    use_acgc: bool | None = None,
+    acgc_client: Any | None = None,
 ) -> EvidenceSession:
     settings = get_settings()
     tenant_id = tenant_id or settings.tenant_id
@@ -119,6 +122,7 @@ def run_agent(
     informed = settings.schema_in_prompt if schema_in_prompt is None else bool(schema_in_prompt)
     handlers = handlers or default_handlers()
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
+    acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
 
     started = time.perf_counter()
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
@@ -136,6 +140,70 @@ def run_agent(
         {"role": "system", "content": system_prompt(schema_in_prompt=informed)},
         {"role": "user", "content": question},
     ]
+    sidecar = acgc_client
+    own_sidecar = False
+    if acgc_on and sidecar is None:
+        from app.retrieval.acgc_sidecar import connect_sidecar
+
+        sidecar = connect_sidecar(settings.acgc_grpc_addr, session_id)
+        own_sidecar = True
+    if sidecar is not None:
+        sidecar.capture("user_prompt", question, {"tenant_id": tenant_id})
+        session.acgc_stats = {
+            "enabled": True,
+            "token_budget": settings.acgc_token_budget,
+            "prompt_tokens": [],
+            "pre_compact_est": [],
+            "post_compact_est": [],
+        }
+
+    try:
+        return _tool_loop(
+            session=session,
+            session_id=session_id,
+            messages=messages,
+            openai_client=openai_client,
+            handlers=handlers,
+            tenant_id=tenant_id,
+            persist=persist,
+            max_turns=max_turns,
+            agent_model=agent_model,
+            answer_model=answer_model,
+            effort=effort,
+            answer_reasoner=answer_reasoner,
+            started=started,
+            sidecar=sidecar,
+            token_budget=settings.acgc_token_budget,
+        )
+    finally:
+        if sidecar is not None:
+            try:
+                session.acgc_stats["sidecar"] = sidecar.metrics()
+            except Exception as exc:
+                session.acgc_stats["sidecar_error"] = str(exc)
+            if own_sidecar:
+                sidecar.close()
+
+
+def _tool_loop(
+    *,
+    session: EvidenceSession,
+    session_id: str,
+    messages: list[dict[str, Any]],
+    openai_client: Any,
+    handlers: dict[str, Callable],
+    tenant_id: str,
+    persist: bool,
+    max_turns: int,
+    agent_model: str,
+    answer_model: str,
+    effort: str | None,
+    answer_reasoner: ReasoningModel | None,
+    started: float,
+    sidecar: Any | None,
+    token_budget: int,
+) -> EvidenceSession:
+    settings = get_settings()
     gathered: list[RetrievedDocument] = []
     submitted: dict[str, Any] | None = None
     forced = False
@@ -156,6 +224,12 @@ def run_agent(
             status = SessionStatus.budget_exhausted
             stop_reason = _budget_reason(session.agent_turns, max_turns)
 
+        if sidecar is not None and any(m.get("role") == "tool" for m in messages):
+            pre = estimate_tokens(messages)
+            messages = compact_messages(messages, token_budget=token_budget)
+            session.acgc_stats.setdefault("pre_compact_est", []).append(pre)
+            session.acgc_stats.setdefault("post_compact_est", []).append(estimate_tokens(messages))
+
         params: dict[str, Any] = {
             "model": agent_model,
             "messages": messages,
@@ -174,10 +248,26 @@ def run_agent(
         session.llm_latency_ms += llm_ms
         usage = usage_from_response(resp)
         session.tokens_consumed += usage.total_tokens
+        if sidecar is not None:
+            session.acgc_stats.setdefault("prompt_tokens", []).append(usage.prompt_tokens)
 
         message = resp.choices[0].message
         assistant_dict = _assistant_dict(message)
         messages.append(assistant_dict)
+        if sidecar is not None:
+            sidecar.capture(
+                "llm_response",
+                json.dumps(
+                    {
+                        "content": assistant_dict.get("content") or "",
+                        "tool_names": [
+                            (tc.get("function") or {}).get("name")
+                            for tc in (assistant_dict.get("tool_calls") or [])
+                        ],
+                    },
+                    default=str,
+                ),
+            )
         tool_calls = list(assistant_dict.get("tool_calls") or [])
         step = _trace(
             session_id,
@@ -276,6 +366,13 @@ def run_agent(
             if len(payload) > 24_000:
                 payload = payload[:24_000] + "…(truncated)"
             messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": payload})
+            if sidecar is not None:
+                sidecar.capture(
+                    "tool_result",
+                    receipt_payload(result),
+                    {"tool": name},
+                )
+                sidecar.trigger_gc()
             step = _trace(
                 session_id,
                 step,
