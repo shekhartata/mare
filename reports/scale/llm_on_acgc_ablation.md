@@ -1,11 +1,11 @@
 # LLM-on ablation: vanilla vs receipts vs ACGC sidecar
 
-Same 20 held-out queries as [llm_on.md](llm_on.md). Root README not updated.
+Same 20 held-out queries as [llm_on.md](llm_on.md). Default loop is now B.
 
 | Arm | What ran |
 | --- | --- |
 | **A** vanilla | Existing `llm_on_10000_semantic_d20_heldout.json` |
-| **B** receipts only | `--compact` — MARE `context_compact.py`, **no** ACGC gRPC |
+| **B** receipts only | Default / `--compact` — MARE `context_compact.py`, **no** ACGC gRPC |
 | **C** receipts + sidecar | Existing `--acgc` run — compact **and** CaptureEvent/TriggerGC |
 
 RAG columns are from A (not rerun).
@@ -50,7 +50,7 @@ C  19.7k   receipts + sidecar     ← no extra token win; more turns
 
 For **ACGC as a product**: this integration does not yet show GC/policy beating application-level compact. `GetState` still does not feed the OpenAI messages. Re-test C vs B after the compiled working set actually comes from ACGC.
 
-For **MARE**: receipts are enough to go from ~19× RAG tokens to ~7× (15.7k / 2.1k), with bounded last-turn prompts. Default loop stays A (`MARE_ACGC=false`, no `--compact`).
+For **MARE**: receipts are enough to go from ~19× RAG tokens to ~7× (15.7k / 2.1k), with bounded last-turn prompts. Default loop is now B (`MARE_COMPACT=true`). Vanilla A is `--no-compact`. Sidecar stays opt-in (`MARE_ACGC=false`).
 
 ## Reproduce B
 

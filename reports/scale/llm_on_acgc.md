@@ -45,4 +45,4 @@ python scripts/run_scale_llm.py --n 10000 --strategy semantic --density 20 \
   --per-category 4 --split heldout --engine mare --acgc
 ```
 
-Without `--acgc` / `MARE_ACGC=false`, the tool loop is unchanged. Output: `llm_on_10000_semantic_d20_heldout_acgc.json`.
+Without `--acgc` / `MARE_ACGC=false`, the sidecar is off; receipts still run (`MARE_COMPACT=true`). Output: `llm_on_10000_semantic_d20_heldout_acgc.json`.

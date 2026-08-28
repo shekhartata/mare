@@ -33,24 +33,24 @@ Same job as the product: **agent + small navigation index + Mongo tools**, not a
 | --- | ---: | ---: |
 | Persistent vectors | **604 (1%)** | 60,000 |
 | Answer correct | **19/20** | 18/20 |
-| Gold-id recall | 0.26 | 0.28 |
-| Latency | 25 s | 12 s |
-| Tokens | 40.6k | 2.1k |
-| Tool calls | 4.4 | 0 |
+| Gold-id recall | 0.32 | 0.28 |
+| Latency | 37 s | 12 s |
+| Tokens | **15.7k** | 2.1k |
+| Tool calls | 4.5 | 0 |
 
-The agent matches RAG answer quality on this sample while storing far fewer vectors. Navigation finds the neighborhood (MRR in line with RAG); the loop then reads live documents and answers.
+The agent matches RAG answer quality on this sample while storing far fewer vectors. The default tool loop stubs old search/retrieve JSON to receipts (`MARE_COMPACT=true`) so prompt replay stays bounded. Full-history vanilla was 40.6k tokens / 25 s.
 
-The remaining cost is **prompt replay**: every tool turn resends prior search JSON. An opt-in sidecar, [ACGC](https://github.com/shekhartata/acgcProject), cuts that without changing the default loop (`MARE_ACGC=false`). Same 20 questions:
+[ACGC](https://github.com/shekhartata/acgcProject) remains opt-in (`MARE_ACGC=false`). Same 20 questions, sidecar on top of receipts did not cut tokens further:
 
-| | MARE | MARE + [ACGC](https://github.com/shekhartata/acgcProject) | RAG |
+| | Receipts (default) | + [ACGC](https://github.com/shekhartata/acgcProject) | RAG |
 | --- | ---: | ---: | ---: |
-| Answer correct | 19/20 | **20/20** | 18/20 |
-| Gold-id recall | 0.26 | **0.46** | 0.28 |
-| Mean tokens | 40.6k | **19.7k** | 2.1k |
-| Worst query | 255k | **53k** | — |
-| Latency | 25 s | 35 s | 12 s |
+| Answer correct | 19/20 | 20/20 | 18/20 |
+| Gold-id recall | 0.32 | 0.46 | 0.28 |
+| Mean tokens | **15.7k** | 19.7k | 2.1k |
+| Worst query | **44k** | 53k | — |
+| Latency | 37 s | 35 s | 12 s |
 
-Hops stay cheap, so the agent can read more gold docs (fine-grained / distractors on this sample). ACGC is off by default. Details: [reports/scale/llm_on_acgc.md](reports/scale/llm_on_acgc.md).
+Ablation: [reports/scale/llm_on_acgc_ablation.md](reports/scale/llm_on_acgc_ablation.md).
 
 A separate retrieval-only pass (no agent) scores the navigation index as a map, not as a chunk replacement — details in [reports/scale/README.md](reports/scale/README.md).
 

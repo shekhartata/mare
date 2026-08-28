@@ -111,6 +111,7 @@ def run_agent(
     compact_context: bool | None = None,
     acgc_client: Any | None = None,
 ) -> EvidenceSession:
+    """Run the tool loop. Receipts compact by default; ACGC sidecar only if use_acgc / MARE_ACGC."""
     settings = get_settings()
     tenant_id = tenant_id or settings.tenant_id
     if client is None and not settings.openai_api_key:
@@ -124,7 +125,9 @@ def run_agent(
     handlers = handlers or default_handlers()
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
     acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
-    compact_on = bool(compact_context) if compact_context is not None else acgc_on
+    compact_on = (
+        bool(compact_context) if compact_context is not None else settings.compact_context
+    )
 
     started = time.perf_counter()
     session_id = f"sess_{uuid.uuid4().hex[:12]}"

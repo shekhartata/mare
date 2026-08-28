@@ -42,7 +42,7 @@ Same semantic nav (604 vectors). Blind agent (`gpt-5-mini` tools, `gpt-5` answer
 
 Fine-grained answers were 4/4 needle-correct on both engines, while MARE gold-slice recall there was 0.03 vs RAG 0.28 — the agent names the cause from the neighborhood without recovering the same gold ids.
 
-Full write-up: [llm_on.md](llm_on.md). Opt-in ACGC compact (same 20 queries): [llm_on_acgc.md](llm_on_acgc.md).
+Full write-up (vanilla, full tool JSON): [llm_on.md](llm_on.md). Default loop is now receipts (15.7k tokens): [llm_on_acgc_ablation.md](llm_on_acgc_ablation.md). Opt-in ACGC sidecar: [llm_on_acgc.md](llm_on_acgc.md).
 
 ## Commands
 

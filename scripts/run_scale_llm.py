@@ -81,6 +81,7 @@ def main() -> None:
     split = "heldout"
     engine = "both"
     use_acgc = False
+    no_compact = False
     compact_only = False
     if "--n" in sys.argv:
         n = int(sys.argv[sys.argv.index("--n") + 1])
@@ -96,7 +97,9 @@ def main() -> None:
         engine = sys.argv[sys.argv.index("--engine") + 1]
     if "--acgc" in sys.argv:
         use_acgc = True
-    if "--compact" in sys.argv:
+    if "--no-compact" in sys.argv:
+        no_compact = True
+    if "--compact" in sys.argv or (not use_acgc and not no_compact):
         compact_only = True
 
     ping()
@@ -106,10 +109,10 @@ def main() -> None:
     queries = stratified_sample(load_gold(GOLD, split=None), per_category=per_category, split=split)
     if use_acgc:
         suffix = "_acgc"
-    elif compact_only:
-        suffix = "_compact"
-    else:
+    elif no_compact:
         suffix = ""
+    else:
+        suffix = "_compact"
     out = OUT_DIR / f"llm_on_{n}_{strategy}_d{density}_{split}{suffix}.json"
     rows: list[dict] = []
     if out.exists() and "--resume" in sys.argv:
@@ -173,7 +176,7 @@ def main() -> None:
                         persist=False,
                         schema_in_prompt=False,
                         use_acgc=use_acgc,
-                        compact_context=True if compact_only and not use_acgc else None,
+                        compact_context=False if no_compact else (True if compact_only and not use_acgc else None),
                     )
                     row["mare"] = score_llm_blob(_session_blob(session), q)
                     print(

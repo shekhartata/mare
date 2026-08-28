@@ -92,7 +92,10 @@ class Settings(BaseSettings):
     schema_sample_size: int = 80
     auto_embed_model: str = "voyage-4-lite"
 
-    # Optional ACGC sidecar (tool-loop context compact). Default off.
+    # Receipt compact on the tool loop (default on). ACGC sidecar is separate and off.
+    compact_context: bool = Field(
+        default=True, validation_alias=AliasChoices("MARE_COMPACT", "compact_context")
+    )
     acgc_enabled: bool = Field(
         default=False, validation_alias=AliasChoices("MARE_ACGC", "acgc_enabled")
     )
