@@ -6,6 +6,19 @@ MARE is an **agentic retrieval** layer on MongoDB: a small navigation index to f
 
 RAG embeds every chunk and answers from Top-K. MARE embeds neighborhoods, lets the agent hop, and cites `database.collection:document_id`.
 
+**This repo is a working demo of that pattern**, not a drop-in for an arbitrary Mongo cluster. Query time is schema-blind; the **index and hops assume this SaaS-ops corpus** (`mare_demo`: customers, tickets, deployments, migrations, incidents, logs, joined on `customer_id`). Pointing `MONGODB_URI` at your database is not enough.
+
+To run it on your data, retarget:
+
+| What | Where |
+| --- | --- |
+| Source DB, collections, query allowlist | `app/constants.py`, `app/search/service.py` |
+| Neighborhood grouping, then rebuild Atlas indexes | `app/indexing/grouping.py`, `app/indexing/hierarchy_builder.py` |
+| Cross-collection hops (`related_nodes`) | `app/retrieval/tools.py` (`customer_id` / `cust_`) |
+| Optional: “looks like an ID” vs “why” routing | `app/search/router.py` |
+
+Documents still need `tenant_id` (injected on every `find`). Do not run `scripts/bootstrap.py` on production — that seeds the demo.
+
 **Contents:** [Results](#results) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture) · [How a question is answered](#how-a-question-is-answered)
 
 ## Results
