@@ -273,3 +273,97 @@ def test_informed_loop_opt_in():
     system = client.calls[0]["messages"][0]["content"]
     assert system == INFORMED_SYSTEM_PROMPT
     assert "mare_demo" in system
+
+
+class FakeAcgc:
+    def __init__(self) -> None:
+        self.events: list[tuple] = []
+        self.gc_runs = 0
+        self.closed = False
+
+    def capture(self, event_type, payload, metadata=None):
+        self.events.append((event_type, payload, metadata or {}))
+
+    def trigger_gc(self):
+        self.gc_runs += 1
+
+    def metrics(self):
+        return {"total_events": len(self.events), "gc_runs": self.gc_runs}
+
+    def close(self):
+        self.closed = True
+
+
+def test_acgc_off_by_default_does_not_compact():
+    fat = dict(SEARCH_HIT)
+    fat["results"] = [
+        {**SEARCH_HIT["results"][0], "summary": "PAD" * 2000, "children_preview": ["x"] * 50}
+    ]
+
+    def handlers():
+        return {
+            "search_information": lambda query, **kwargs: fat,
+            "retrieve_evidence": lambda node_ids, **kwargs: LOG_DOC,
+            "query_documents": lambda namespace, filter, **kwargs: {"count": 0, "documents": []},
+        }
+
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "mig_auth_sso"})]),
+            _response(
+                [_tool_call("c2", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]
+            ),
+            _response([_tool_call("c3", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers(),
+    )
+    assert session.status == SessionStatus.complete
+    assert session.acgc_stats == {}
+    second = json.dumps(client.calls[1]["messages"])
+    assert "PAD" * 20 in second
+
+
+def test_acgc_flag_compacts_old_tool_payloads():
+    fat = dict(SEARCH_HIT)
+    fat["results"] = [
+        {
+            **SEARCH_HIT["results"][0],
+            "summary": "PAD" * 2000,
+            "important_fields": ["error_code"],
+        }
+    ]
+    sidecar = FakeAcgc()
+
+    def handlers():
+        return {
+            "search_information": lambda query, **kwargs: fat,
+            "retrieve_evidence": lambda node_ids, **kwargs: LOG_DOC,
+            "query_documents": lambda namespace, filter, **kwargs: {"count": 0, "documents": []},
+        }
+
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "mig_auth_sso"})]),
+            _response(
+                [_tool_call("c2", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]
+            ),
+            _response([_tool_call("c3", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers(),
+        use_acgc=True,
+        acgc_client=sidecar,
+    )
+    assert session.status == SessionStatus.complete
+    assert session.acgc_stats.get("enabled") is True
+    assert sidecar.events[0][0] == "user_prompt"
+    assert sidecar.gc_runs >= 1
+    second = client.calls[1]["messages"]
+    tool_msgs = [m for m in second if m.get("role") == "tool"]
+    assert tool_msgs
+    search_blob = tool_msgs[0]["content"]
+    assert "nav:group:cust_007" in search_blob
+    assert "error_code" in search_blob
+    assert "PAD" * 50 not in search_blob
+    assert "compacted" in search_blob
+    assert len(search_blob) < 1500
+

@@ -39,6 +39,17 @@ Same job as the product: **agent + small navigation index + Mongo tools**, not a
 
 The agent matches RAG answer quality on this sample while storing far fewer vectors. Navigation finds the neighborhood (MRR in line with RAG); the loop then reads live documents and answers.
 
+The remaining cost is **prompt replay**: every tool turn resends prior search JSON. An opt-in sidecar, [ACGC](https://github.com/shekhartata/acgcProject) (Agent Context Garbage Collector), cuts that without changing the default loop (`MARE_ACGC=false`). Same 20 questions:
+
+| | MARE | MARE + [ACGC](https://github.com/shekhartata/acgcProject) |
+| --- | ---: | ---: |
+| Answer correct | 19/20 | **20/20** |
+| Mean tokens | 40.6k | **19.7k** |
+| Worst query | 255k | **53k** |
+| Latency | 25 s | 35 s |
+
+ACGC is not on by default. Details: [reports/scale/llm_on_acgc.md](reports/scale/llm_on_acgc.md).
+
 A separate retrieval-only pass (no agent) scores the navigation index as a map, not as a chunk replacement — details in [reports/scale/README.md](reports/scale/README.md).
 
 ## When to use MARE

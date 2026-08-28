@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     schema_sample_size: int = 80
     auto_embed_model: str = "voyage-4-lite"
 
+    # Optional ACGC sidecar (tool-loop context compact). Default off.
+    acgc_enabled: bool = Field(
+        default=False, validation_alias=AliasChoices("MARE_ACGC", "acgc_enabled")
+    )
+    acgc_grpc_addr: str = Field(
+        default="localhost:50051",
+        validation_alias=AliasChoices("ACGC_GRPC_ADDR", "acgc_grpc_addr"),
+    )
+    acgc_token_budget: int = Field(
+        default=8_000, validation_alias=AliasChoices("ACGC_TOKEN_BUDGET", "acgc_token_budget")
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
