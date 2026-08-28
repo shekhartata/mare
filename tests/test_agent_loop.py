@@ -294,7 +294,37 @@ class FakeAcgc:
         self.closed = True
 
 
-def test_acgc_off_by_default_does_not_compact():
+def test_compact_on_by_default():
+    fat = dict(SEARCH_HIT)
+    fat["results"] = [
+        {**SEARCH_HIT["results"][0], "summary": "PAD" * 2000, "important_fields": ["error_code"]}
+    ]
+
+    def handlers():
+        return {
+            "search_information": lambda query, **kwargs: fat,
+            "retrieve_evidence": lambda node_ids, **kwargs: LOG_DOC,
+            "query_documents": lambda namespace, filter, **kwargs: {"count": 0, "documents": []},
+        }
+
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "mig_auth_sso"})]),
+            _response(
+                [_tool_call("c2", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]
+            ),
+            _response([_tool_call("c3", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers(),
+    )
+    assert session.status == SessionStatus.complete
+    assert session.acgc_stats.get("mode") == "compact"
+    search_blob = [m["content"] for m in client.calls[1]["messages"] if m.get("role") == "tool"][0]
+    assert "compacted" in search_blob
+    assert "PAD" * 50 not in search_blob
+
+
+def test_compact_can_be_disabled():
     fat = dict(SEARCH_HIT)
     fat["results"] = [
         {**SEARCH_HIT["results"][0], "summary": "PAD" * 2000, "children_preview": ["x"] * 50}
@@ -316,8 +346,8 @@ def test_acgc_off_by_default_does_not_compact():
             _response([_tool_call("c3", "submit_answer", SUBMIT)]),
         ],
         handlers=handlers(),
+        compact_context=False,
     )
-    assert session.status == SessionStatus.complete
     assert session.acgc_stats == {}
     second = json.dumps(client.calls[1]["messages"])
     assert "PAD" * 20 in second
@@ -366,4 +396,41 @@ def test_acgc_flag_compacts_old_tool_payloads():
     assert "PAD" * 50 not in search_blob
     assert "compacted" in search_blob
     assert len(search_blob) < 1500
+
+
+def test_compact_without_sidecar():
+    fat = dict(SEARCH_HIT)
+    fat["results"] = [
+        {
+            **SEARCH_HIT["results"][0],
+            "summary": "PAD" * 2000,
+            "important_fields": ["error_code"],
+        }
+    ]
+
+    def handlers():
+        return {
+            "search_information": lambda query, **kwargs: fat,
+            "retrieve_evidence": lambda node_ids, **kwargs: LOG_DOC,
+            "query_documents": lambda namespace, filter, **kwargs: {"count": 0, "documents": []},
+        }
+
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "mig_auth_sso"})]),
+            _response(
+                [_tool_call("c2", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]
+            ),
+            _response([_tool_call("c3", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers(),
+        compact_context=True,
+        use_acgc=False,
+    )
+    assert session.acgc_stats.get("mode") == "compact"
+    assert "sidecar" not in session.acgc_stats
+    search_blob = [m["content"] for m in client.calls[1]["messages"] if m.get("role") == "tool"][0]
+    assert "compacted" in search_blob
+    assert "nav:group:cust_007" in search_blob
+    assert "PAD" * 50 not in search_blob
 

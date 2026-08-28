@@ -108,8 +108,10 @@ def run_agent(
     answer_reasoner: ReasoningModel | None = None,
     schema_in_prompt: bool | None = None,
     use_acgc: bool | None = None,
+    compact_context: bool | None = None,
     acgc_client: Any | None = None,
 ) -> EvidenceSession:
+    """Run the tool loop. Receipts compact by default; ACGC sidecar only if use_acgc / MARE_ACGC."""
     settings = get_settings()
     tenant_id = tenant_id or settings.tenant_id
     if client is None and not settings.openai_api_key:
@@ -123,6 +125,9 @@ def run_agent(
     handlers = handlers or default_handlers()
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
     acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
+    compact_on = (
+        bool(compact_context) if compact_context is not None else settings.compact_context
+    )
 
     started = time.perf_counter()
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
@@ -147,15 +152,17 @@ def run_agent(
 
         sidecar = connect_sidecar(settings.acgc_grpc_addr, session_id)
         own_sidecar = True
-    if sidecar is not None:
-        sidecar.capture("user_prompt", question, {"tenant_id": tenant_id})
+    if compact_on:
         session.acgc_stats = {
             "enabled": True,
+            "mode": "sidecar" if sidecar is not None else "compact",
             "token_budget": settings.acgc_token_budget,
             "prompt_tokens": [],
             "pre_compact_est": [],
             "post_compact_est": [],
         }
+    if sidecar is not None:
+        sidecar.capture("user_prompt", question, {"tenant_id": tenant_id})
 
     try:
         return _tool_loop(
@@ -173,6 +180,7 @@ def run_agent(
             answer_reasoner=answer_reasoner,
             started=started,
             sidecar=sidecar,
+            compact_on=compact_on,
             token_budget=settings.acgc_token_budget,
         )
     finally:
@@ -201,6 +209,7 @@ def _tool_loop(
     answer_reasoner: ReasoningModel | None,
     started: float,
     sidecar: Any | None,
+    compact_on: bool,
     token_budget: int,
 ) -> EvidenceSession:
     settings = get_settings()
@@ -224,7 +233,7 @@ def _tool_loop(
             status = SessionStatus.budget_exhausted
             stop_reason = _budget_reason(session.agent_turns, max_turns)
 
-        if sidecar is not None and any(m.get("role") == "tool" for m in messages):
+        if compact_on and any(m.get("role") == "tool" for m in messages):
             pre = estimate_tokens(messages)
             messages = compact_messages(messages, token_budget=token_budget)
             session.acgc_stats.setdefault("pre_compact_est", []).append(pre)
@@ -248,7 +257,7 @@ def _tool_loop(
         session.llm_latency_ms += llm_ms
         usage = usage_from_response(resp)
         session.tokens_consumed += usage.total_tokens
-        if sidecar is not None:
+        if compact_on:
             session.acgc_stats.setdefault("prompt_tokens", []).append(usage.prompt_tokens)
 
         message = resp.choices[0].message

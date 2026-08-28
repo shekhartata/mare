@@ -81,6 +81,8 @@ def main() -> None:
     split = "heldout"
     engine = "both"
     use_acgc = False
+    no_compact = False
+    compact_only = False
     if "--n" in sys.argv:
         n = int(sys.argv[sys.argv.index("--n") + 1])
     if "--density" in sys.argv:
@@ -95,17 +97,23 @@ def main() -> None:
         engine = sys.argv[sys.argv.index("--engine") + 1]
     if "--acgc" in sys.argv:
         use_acgc = True
+    if "--no-compact" in sys.argv:
+        no_compact = True
+    if "--compact" in sys.argv or (not use_acgc and not no_compact):
+        compact_only = True
 
     ping()
     settings = get_settings()
     agent_db_name = scale_agent_db_name(n, density, strategy)
     rag_db_name = scale_rag_db_name(n)
     queries = stratified_sample(load_gold(GOLD, split=None), per_category=per_category, split=split)
-    out = OUT_DIR / (
-        f"llm_on_{n}_{strategy}_d{density}_{split}_acgc.json"
-        if use_acgc
-        else f"llm_on_{n}_{strategy}_d{density}_{split}.json"
-    )
+    if use_acgc:
+        suffix = "_acgc"
+    elif no_compact:
+        suffix = ""
+    else:
+        suffix = "_compact"
+    out = OUT_DIR / f"llm_on_{n}_{strategy}_d{density}_{split}{suffix}.json"
     rows: list[dict] = []
     if out.exists() and "--resume" in sys.argv:
         prev = json.loads(out.read_text())
@@ -131,8 +139,9 @@ def main() -> None:
         "max_agent_turns": settings.max_agent_turns,
         "schema_in_prompt": False,
         "acgc": use_acgc,
+        "compact_only": compact_only and not use_acgc,
         "acgc_grpc_addr": settings.acgc_grpc_addr if use_acgc else None,
-        "acgc_token_budget": settings.acgc_token_budget if use_acgc else None,
+        "acgc_token_budget": settings.acgc_token_budget if (use_acgc or compact_only) else None,
         "note": "LLM-on end-to-end. Does not replace LLM-off retrieval reports.",
         "queries": rows,
     }
@@ -140,7 +149,7 @@ def main() -> None:
     print(
         f"LLM-on scale: {len(rows) + len(queries)} queries "
         f"agent={settings.openai_model_agent} answer={settings.openai_model} "
-        f"nav={agent_db_name} rag={rag_db_name} acgc={use_acgc}"
+        f"nav={agent_db_name} rag={rag_db_name} acgc={use_acgc} compact={compact_only and not use_acgc}"
     )
     if use_acgc:
         from app.retrieval.acgc_sidecar import connect_sidecar
@@ -167,6 +176,7 @@ def main() -> None:
                         persist=False,
                         schema_in_prompt=False,
                         use_acgc=use_acgc,
+                        compact_context=False if no_compact else (True if compact_only and not use_acgc else None),
                     )
                     row["mare"] = score_llm_blob(_session_blob(session), q)
                     print(
