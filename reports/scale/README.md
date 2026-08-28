@@ -70,6 +70,7 @@ python scripts/run_scale_llm.py --n 10000 --strategy semantic --density 20 --per
 | `semantic_nav.md` | Representation change + stop criterion |
 | `llm_on.md` | End-to-end agent vs RAG answers |
 | `llm_on_acgc.md` | Same 20 queries with opt-in [ACGC](https://github.com/shekhartata/acgcProject) compact |
+| `llm_on_acgc_ablation.md` | A vanilla vs B receipts-only vs C sidecar |
 | `long_tail.md` | Category and frequency-tier breakout |
 | `update_cost.md` | Churn (density 100 only) |
 | `index_footprint.md` | Vector / byte estimates |
