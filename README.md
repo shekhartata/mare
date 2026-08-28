@@ -33,22 +33,24 @@ Same job as the product: **agent + small navigation index + Mongo tools**, not a
 | --- | ---: | ---: |
 | Persistent vectors | **604 (1%)** | 60,000 |
 | Answer correct | **19/20** | 18/20 |
+| Gold-id recall | 0.26 | 0.28 |
 | Latency | 25 s | 12 s |
 | Tokens | 40.6k | 2.1k |
 | Tool calls | 4.4 | 0 |
 
 The agent matches RAG answer quality on this sample while storing far fewer vectors. Navigation finds the neighborhood (MRR in line with RAG); the loop then reads live documents and answers.
 
-The remaining cost is **prompt replay**: every tool turn resends prior search JSON. An opt-in sidecar, [ACGC](https://github.com/shekhartata/acgcProject) (Agent Context Garbage Collector), cuts that without changing the default loop (`MARE_ACGC=false`). Same 20 questions:
+The remaining cost is **prompt replay**: every tool turn resends prior search JSON. An opt-in sidecar, [ACGC](https://github.com/shekhartata/acgcProject), cuts that without changing the default loop (`MARE_ACGC=false`). Same 20 questions:
 
-| | MARE | MARE + [ACGC](https://github.com/shekhartata/acgcProject) |
-| --- | ---: | ---: |
-| Answer correct | 19/20 | **20/20** |
-| Mean tokens | 40.6k | **19.7k** |
-| Worst query | 255k | **53k** |
-| Latency | 25 s | 35 s |
+| | MARE | MARE + [ACGC](https://github.com/shekhartata/acgcProject) | RAG |
+| --- | ---: | ---: | ---: |
+| Answer correct | 19/20 | **20/20** | 18/20 |
+| Gold-id recall | 0.26 | **0.46** | 0.28 |
+| Mean tokens | 40.6k | **19.7k** | 2.1k |
+| Worst query | 255k | **53k** | — |
+| Latency | 25 s | 35 s | 12 s |
 
-ACGC is not on by default. Details: [reports/scale/llm_on_acgc.md](reports/scale/llm_on_acgc.md).
+Hops stay cheap, so the agent can read more gold docs (fine-grained / distractors on this sample). ACGC is off by default. Details: [reports/scale/llm_on_acgc.md](reports/scale/llm_on_acgc.md).
 
 A separate retrieval-only pass (no agent) scores the navigation index as a map, not as a chunk replacement — details in [reports/scale/README.md](reports/scale/README.md).
 
