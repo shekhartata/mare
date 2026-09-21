@@ -26,7 +26,7 @@ from app.search.capabilities import capabilities_or_default
 from app.search.hybrid import hybrid_search
 from app.search.lexical import lexical_search
 from app.search.router import recommend_method
-from app.search.structured import query_documents, read_documents
+from app.search.structured import count_documents, query_documents, read_documents
 from app.search.vector import semantic_search
 
 ALLOWED_DBS = {RAW_DB, AGENT_DB, RAG_DB, SCALE_RAW_DB}
@@ -181,6 +181,21 @@ def query_namespace(
         filter_doc=filter_doc,
         projection=projection,
         limit=limit,
+    )
+
+
+def count_namespace(
+    namespace: str,
+    filter_doc: dict[str, Any] | None = None,
+    *,
+    tenant_id: str | None = None,
+) -> int:
+    tenant_id = tenant_id or get_settings().tenant_id
+    database, collection = _split_ns(namespace)
+    return count_documents(
+        get_client()[database][collection],
+        tenant_id=tenant_id,
+        filter_doc=filter_doc,
     )
 
 

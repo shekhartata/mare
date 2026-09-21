@@ -347,7 +347,11 @@ def dispatch_tool(
             projection=arguments.get("projection"),
             limit=arguments.get("limit"),
         )
-    return {"error": f"tool {name} is not executable here"}
+    kwargs = {k: v for k, v in arguments.items() if k != "tenant_id"}
+    try:
+        return handler(tenant_id=tenant_id, **kwargs)
+    except TypeError:
+        return handler(**kwargs)
 
 
 def _docs_for_node(node: dict[str, Any], tenant_id: str, query: str, limit: int):

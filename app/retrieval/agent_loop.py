@@ -110,6 +110,7 @@ def run_agent(
     use_acgc: bool | None = None,
     compact_context: bool | None = None,
     acgc_client: Any | None = None,
+    tool_surface: str | None = None,
 ) -> EvidenceSession:
     """Run the tool loop. Receipts compact by default; ACGC sidecar only if use_acgc / MARE_ACGC."""
     settings = get_settings()
@@ -122,7 +123,19 @@ def run_agent(
     effort = reasoning_effort if reasoning_effort is not None else settings.openai_reasoning_effort
     max_turns = settings.max_agent_turns if max_turns is None else int(max_turns)
     informed = settings.schema_in_prompt if schema_in_prompt is None else bool(schema_in_prompt)
-    handlers = handlers or default_handlers()
+    surface = (tool_surface or "mare").strip().lower()
+    tool_defs = TOOL_DEFINITIONS
+    prompt = system_prompt(schema_in_prompt=informed)
+    if surface == "mongo_mcp":
+        from app.retrieval.mongo_mcp import SYSTEM_PROMPT as MCP_PROMPT
+        from app.retrieval.mongo_mcp import TOOL_DEFINITIONS as MCP_TOOLS
+        from app.retrieval.mongo_mcp import default_handlers as mcp_handlers
+
+        tool_defs = MCP_TOOLS
+        prompt = MCP_PROMPT
+        handlers = handlers or mcp_handlers()
+    else:
+        handlers = handlers or default_handlers()
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
     acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
     compact_on = (
@@ -142,7 +155,7 @@ def run_agent(
     _persist(session, persist)
 
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_prompt(schema_in_prompt=informed)},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": question},
     ]
     sidecar = acgc_client
@@ -182,6 +195,7 @@ def run_agent(
             sidecar=sidecar,
             compact_on=compact_on,
             token_budget=settings.acgc_token_budget,
+            tool_defs=tool_defs,
         )
     finally:
         if sidecar is not None:
@@ -211,6 +225,7 @@ def _tool_loop(
     sidecar: Any | None,
     compact_on: bool,
     token_budget: int,
+    tool_defs: list[dict[str, Any]],
 ) -> EvidenceSession:
     settings = get_settings()
     gathered: list[RetrievedDocument] = []
@@ -242,7 +257,7 @@ def _tool_loop(
         params: dict[str, Any] = {
             "model": agent_model,
             "messages": messages,
-            "tools": TOOL_DEFINITIONS,
+            "tools": tool_defs,
             "tool_choice": (
                 {"type": "function", "function": {"name": SUBMIT_TOOL}} if forced else "auto"
             ),
@@ -368,7 +383,7 @@ def _tool_loop(
                 result = {"error": str(exc)}
             mongo_ms = (time.perf_counter() - t_mongo) * 1000
             session.mongo_latency_ms += mongo_ms
-            if name in {"retrieve_evidence", "query_documents"}:
+            if name in {"retrieve_evidence", "query_documents", "find", "count"}:
                 session.retrieval_count += 1
             gathered.extend(_docs_from_tool_result(result))
             payload = json.dumps(result, default=str)

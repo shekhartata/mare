@@ -41,3 +41,12 @@ def read_documents(
     scoped = inject_tenant(id_filter, tenant_id)
     proj = sanitize_projection(projection)
     return list(coll.find(scoped, proj))
+
+
+def count_documents(
+    coll: Collection,
+    *,
+    tenant_id: str,
+    filter_doc: dict[str, Any] | None = None,
+) -> int:
+    return int(coll.count_documents(inject_tenant(filter_doc, tenant_id)))
