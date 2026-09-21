@@ -38,6 +38,16 @@ Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%).
 
 MARE is for questions Top-K cannot structurally answer: unnamed hops, absence, distributed evidence. Named-ID lookups are a fast RAG/`find` path. Full prompts and traces: [reports/README.md](reports/README.md).
 
+### Demo vs Mongo MCP (no navigation index)
+
+Same nine questions, schema-blind `list` / `schema` / `find` / `count`. No `related_nodes`.
+
+| | MARE | MCP | RAG |
+| --- | ---: | ---: | ---: |
+| Answer correct | **7/9** | 3/9 | 4/9 |
+
+MCP matches on **named lookup** and **absence** (empty `find`). It fails **bridge** and **distributed / variable-K hops** (found the customer, no second collection). Details: [reports/mongo_mcp.md](reports/mongo_mcp.md).
+
 ### Scale (10K incidents, LLM-on)
 
 Same job as the product: **agent + small navigation index + Mongo tools**, not a chunk-for-chunk retrieval bake-off. Semantic nav is **604 vectors vs 60,000 RAG chunks (1%)**. Blind agent (`gpt-5-mini` tools, `gpt-5` answers) vs hybrid Top-K RAG (`gpt-5`). 20 held-out questions, 4 per category.
@@ -74,7 +84,7 @@ A separate retrieval-only pass (no agent) scores the navigation index as a map, 
 | ID is in the prompt | RAG or `find` |
 | Entity not named; need a hop | **MARE** |
 | Count / filter over a collection | **MARE** (path); check the answer still counts |
-| Prove nothing matched | **MARE** |
+| Prove nothing matched | MARE or `find` |
 | Cause split across records; lookalike customers | **MARE** at default K; RAG if you raise K |
 | “Pass the context” semantic search | RAG |
 
@@ -113,6 +123,7 @@ Reproduce:
 ```bash
 python scripts/run_comparison.py              # demo cases
 python scripts/run_comparison.py --informed   # schema-in-prompt control
+python scripts/run_comparison.py --mongo-mcp  # find/count MCP control (reuses stored MARE/RAG)
 python scripts/seed_scale.py --n 10000
 python scripts/build_scale.py --n 10000 --strategy semantic --density 20 --chunk-size 512 --skip-rag
 python scripts/run_scale_retrieval.py --n 10000 --budget 10 --split heldout --engine mare --density 20 --strategy semantic

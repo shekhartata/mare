@@ -151,6 +151,25 @@ def _score_engine(blob: dict, gold_query: dict) -> None:
     )
 
 
+def run_mongo_mcp(question: str, gold_query: dict, *, max_turns: int) -> dict:
+    print(f"  Mongo MCP: {question[:80]}...")
+    session = run_agent(
+        question,
+        schema_in_prompt=False,
+        max_turns=max_turns,
+        tool_surface="mongo_mcp",
+    )
+    print(
+        f"    done {session.status.value} {round(session.elapsed_ms)}ms "
+        f"turns={session.agent_turns} tools={session.tool_calls} "
+        f"llm={round(session.llm_latency_ms)}ms mongo={round(session.mongo_latency_ms)}ms"
+    )
+    blob = _session_blob(session)
+    blob["tool_surface"] = "mongo_mcp"
+    _score_engine(blob, gold_query)
+    return blob
+
+
 def run_pair(
     question: str,
     gold_query: dict,
@@ -445,6 +464,7 @@ def _parse_cli(argv: list[str]) -> dict:
         "informed": informed,
         "rescore": rescore,
         "rerun_rag": rerun_rag,
+        "mongo_mcp": "--mongo-mcp" in argv,
         "only": only,
         "turns": turns,
     }
@@ -459,7 +479,7 @@ def _rescore_from_payload() -> None:
     max_turns = int(payload.get("max_agent_turns") or get_settings().max_agent_turns)
     for slug, case in payload["cases"].items():
         q = gold[case["id"]]
-        for key in ("adaptive", "adaptive_blind", "adaptive_informed", "rag"):
+        for key in ("adaptive", "adaptive_blind", "adaptive_informed", "rag", "mongo_mcp"):
             if key in case:
                 _score_engine(case[key], q)
         for blob in (case.get("rag_by_k") or {}).values():
@@ -494,6 +514,8 @@ def _rescore_from_payload() -> None:
         )
     (OUT / "comparison.json").write_text(json.dumps(payload, indent=2, default=str) + "\n")
     (OUT / "README.md").write_text(_summary_md(payload), encoding="utf-8")
+    if any(c.get("mongo_mcp") for c in payload.get("cases", {}).values()):
+        (OUT / "mongo_mcp.md").write_text(_mongo_mcp_md(payload), encoding="utf-8")
     print(f"wrote {OUT / 'README.md'}")
 
 
@@ -556,6 +578,21 @@ def main() -> None:
         q = gold[qid]
         print(f"\n=== {title} ({qid}) ===")
         existing = payload["cases"].get(slug) or {}
+        if cli["mongo_mcp"]:
+            blob = run_mongo_mcp(q["question"], q, max_turns=max_turns)
+            stored = dict(existing)
+            stored.update(
+                {
+                    "id": qid,
+                    "class": q["class"],
+                    "question": q["question"],
+                    "gold_answer": q["gold_answer"],
+                    "why": why,
+                    "mongo_mcp": blob,
+                }
+            )
+            payload["cases"][slug] = stored
+            continue
         skip_rag = (
             (schema_in_prompt or bool(cli["only"]))
             and bool(existing.get("rag"))
@@ -592,6 +629,8 @@ def main() -> None:
             stored["adaptive_blind"] = pair["adaptive"]
             if existing.get("adaptive_informed"):
                 stored["adaptive_informed"] = existing["adaptive_informed"]
+        if existing.get("mongo_mcp"):
+            stored["mongo_mcp"] = existing["mongo_mcp"]
         payload["cases"][slug] = stored
         primary = stored.get("adaptive_blind") or pair["adaptive"]
         md = markdown_case(
@@ -614,13 +653,98 @@ def main() -> None:
         print(f"wrote {OUT / f'{slug}.md'}")
 
     (OUT / "comparison.json").write_text(json.dumps(payload, indent=2, default=str) + "\n")
-    (OUT / "README.md").write_text(_summary_md(payload), encoding="utf-8")
-    print(f"\nwrote {OUT / 'README.md'}")
+    if any(c.get("mongo_mcp") for c in payload.get("cases", {}).values()):
+        (OUT / "mongo_mcp.md").write_text(_mongo_mcp_md(payload), encoding="utf-8")
+        print(f"wrote {OUT / 'mongo_mcp.md'}")
+    if not cli["mongo_mcp"]:
+        (OUT / "README.md").write_text(_summary_md(payload), encoding="utf-8")
+        print(f"\nwrote {OUT / 'README.md'}")
     print(json.dumps({"model": settings.openai_model, "mode": mode, "footprint": footprint}, indent=2))
 
 
 def _mare_blob(case: dict) -> dict:
     return case.get("adaptive_blind") or case.get("adaptive") or {}
+
+
+CASE_LABELS = (
+    ("simple_lookup", "Simple lookup"),
+    ("multihop", "Named multi-hop"),
+    ("bridge", "Bridge (unnamed entity)"),
+    ("aggregation", "Aggregation (count)"),
+    ("negative", "Negative (absence)"),
+    ("distributed", "Distributed evidence"),
+    ("vk_small", "Variable K — small"),
+    ("vk_medium", "Variable K — medium"),
+    ("vk_deep", "Variable K — deep"),
+)
+
+
+def _mongo_mcp_md(payload: dict) -> str:
+    lines = [
+        "# MARE vs Mongo MCP",
+        "",
+        f"- generated: {payload.get('generated_at')}",
+        f"- answering model: `{payload.get('model')}`",
+        f"- agent model: `{payload.get('agent_model')}`",
+        "",
+        "Same demo questions as [README.md](README.md). **Mongo MCP** is a schema-blind "
+        "agent with `list_databases` / `list_collections` / `collection_schema` / `find` / "
+        "`count` only — no `navigation_nodes`, no `related_nodes`. MARE and RAG numbers "
+        "are reused from `comparison.json` when present.",
+        "",
+        "| case | MARE | MCP | RAG | MARE ms | MCP ms | RAG ms | MARE tok | MCP tok | MARE tools | MCP tools |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for slug, label in CASE_LABELS:
+        c = payload.get("cases", {}).get(slug)
+        if not c or not c.get("mongo_mcp"):
+            continue
+        a = _mare_blob(c)
+        m = c["mongo_mcp"]
+        r = c.get("rag") or {}
+        lines.append(
+            f"| {label} | "
+            f"{_yn((a.get('answer_score') or {}).get('correct'))} | "
+            f"{_yn((m.get('answer_score') or {}).get('correct'))} | "
+            f"{_yn((r.get('answer_score') or {}).get('correct'))} | "
+            f"{round(a.get('elapsed_ms') or 0)} | "
+            f"{round(m.get('elapsed_ms') or 0)} | "
+            f"{round(r.get('elapsed_ms') or 0)} | "
+            f"{a.get('tokens_consumed') or 0} | "
+            f"{m.get('tokens_consumed') or 0} | "
+            f"{a.get('tool_calls') or 0} | "
+            f"{m.get('tool_calls') or 0} |"
+        )
+    lines += [
+        "",
+        "## Answers",
+        "",
+    ]
+    for slug, label in CASE_LABELS:
+        c = payload.get("cases", {}).get(slug)
+        if not c or not c.get("mongo_mcp"):
+            continue
+        m = c["mongo_mcp"]
+        lines += [
+            f"### {label}",
+            "",
+            (m.get("answer") or "_(empty)_"),
+            "",
+            f"stop={m.get('stop_reason')} turns={m.get('agent_turns')} "
+            f"tools={m.get('tool_calls')} tokens={m.get('tokens_consumed')}",
+            "",
+        ]
+    lines += [
+        "## Reproduce",
+        "",
+        "```bash",
+        "python scripts/run_comparison.py --mongo-mcp",
+        "```",
+        "",
+        "Reuses MARE/RAG blobs already in `comparison.json`. Does not rewrite the per-case MARE vs RAG markdown.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _summary_md(payload: dict) -> str:
@@ -755,6 +879,12 @@ def _summary_md(payload: dict) -> str:
         "hop (root cause), not just naming the customer.",
         "",
     ]
+    if any(c.get("mongo_mcp") for c in payload.get("cases", {}).values()):
+        lines += [
+            "Measured control (same questions, `find`/`count`, no nav index): "
+            "[mongo_mcp.md](mongo_mcp.md).",
+            "",
+        ]
     semantic_slugs = (
         ("distributed", "Distributed (B1)"),
         ("vk_small", "Variable K — small"),
@@ -851,6 +981,7 @@ def _summary_md(payload: dict) -> str:
         "```bash",
         "python scripts/run_comparison.py              # schema-blind MARE vs RAG",
         "python scripts/run_comparison.py --informed   # A/B with schema in the prompt",
+        "python scripts/run_comparison.py --mongo-mcp  # find/count agent; reuse stored MARE/RAG",
         "python scripts/run_comparison.py --only bridge",
         "python scripts/run_comparison.py --only distributed",
         "python scripts/run_comparison.py --only vk",
