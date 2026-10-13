@@ -11,6 +11,7 @@ from app.indexing.signals import build_generic_index, reset_index_state
 from app.indexing.signals.store import (
     MissingGenericIndex,
     _mongo_query,
+    index_database,
     load_generic_handlers,
     load_generic_index,
     read_source,
@@ -156,6 +157,27 @@ def test_read_source_marks_a_short_read_incomplete():
     assert [doc["_id"] for doc in documents["orders"]] == ["a"]
     assert scope["orders"]["complete"] is False
     assert scope["orders"]["ids"] == ["a"]
+
+
+def test_index_database_saves_cards_for_a_later_load():
+    docs = shop_documents()
+    client = _Client()
+    for name, rows in docs.items():
+        client["mare_shop"][name].docs = list(rows)
+    summary = index_database(client, "mare_shop")
+    assert summary["documents"] == 5
+    assert summary["cards"] >= 1
+    loaded, scope = load_generic_index(client)
+    assert loaded.database == "mare_shop"
+    assert scope["refunds"]["complete"] is True
+
+
+def test_connect_page_offers_index_and_ask():
+    from app.api.generic_ui import PAGE
+
+    assert "Connection string" in PAGE
+    assert "/ui/index" in PAGE
+    assert "/ui/ask" in PAGE
 
 
 def test_missing_catalog_raises():

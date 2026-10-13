@@ -50,6 +50,40 @@ def read_source(
     return documents, scope
 
 
+def index_database(
+    client: Any,
+    database_name: str,
+    *,
+    limit: int | None = None,
+    collections: list[str] | None = None,
+) -> dict[str, Any]:
+    """Read one database, build neighborhoods, and save the cards on that cluster."""
+    from app.config import get_settings
+    from app.indexing.signals.orchestrator import build_generic_index
+
+    database = client[database_name]
+    names = collections or [
+        name
+        for name in sorted(database.list_collection_names())
+        if not name.startswith("system.")
+    ]
+    documents, scope = read_source(database, names, limit)
+    index = build_generic_index(
+        documents,
+        database=database_name,
+        sample_size=get_settings().generic_sample_size,
+        use_cache=False,
+    )
+    save_generic_index(client, index, scope)
+    return {
+        "database": database_name,
+        "documents": sum(len(rows) for rows in documents.values()),
+        "cards": len(index.cards),
+        "plans": len(index.plans),
+        "partial": [name for name, entry in scope.items() if not entry.get("complete")],
+    }
+
+
 def save_generic_index(
     client: Any,
     index: GenericIndex,

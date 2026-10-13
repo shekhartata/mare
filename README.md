@@ -6,7 +6,7 @@ MARE indexes a MongoDB workload you already have. Point it at your collections. 
 
 RAG embeds every chunk and answers from Top-K. MARE embeds one card per neighborhood and cites `database.collection:document_id`.
 
-The packaged demo is a SaaS-ops corpus (`mare_demo`) used for the RAG comparison below. With `MARE_GENERIC_INDEX` left off, `POST /ask` runs that demo. Your database is indexed with [the commands below](#use-it-on-your-mongodb), and the saved cards can be queried from a later script, from `POST /ask`, or from MCP. You do not edit collection names, `customer_id`, or the demo hop code.
+The packaged demo is a SaaS-ops corpus (`mare_demo`) used for the RAG comparison below. With `MARE_GENERIC_INDEX` left off, `POST /ask` runs that demo. Index your database from the [connect page](#use-it-on-your-mongodb). The saved cards can be queried on that page, from a later script, from `POST /ask`, or from MCP. You do not edit collection names, `customer_id`, or the demo hop code.
 
 This slice indexes the documents you load. It records traces. It does not rebuild the index from later questions.
 
@@ -14,7 +14,7 @@ This slice indexes the documents you load. It records traces. It does not rebuil
 
 ## Use it on your MongoDB
 
-Python 3.12+. `MONGODB_URI` and `OPENAI_API_KEY` in `.env` (`OPENAI_MODEL=gpt-5`, `OPENAI_MODEL_AGENT=gpt-5-mini`).
+Python 3.12+. Put `OPENAI_API_KEY` in `.env` (`OPENAI_MODEL=gpt-5`, `OPENAI_MODEL_AGENT=gpt-5-mini`). The connect page takes the MongoDB connection string in the browser and does not store it. `MONGODB_URI` is for the command-line index and the SaaS demo.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -22,7 +22,15 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Index the database once. The command reads each collection, writes neighborhood cards and hops into `_agent_retrieval`, and leaves your documents where they are. A later process on the same cluster loads those cards and reads the live collections.
+Index the database once. Cards and hops are written to `_agent_retrieval` on that cluster. Your documents stay where they are. A later process on the same cluster loads those cards and reads the live collections.
+
+```bash
+uvicorn app.main:app --port 8080
+```
+
+Open `http://localhost:8080`. Paste the connection string, choose the database, and index. Asking on the page is optional. Closing it leaves the cards on the cluster.
+
+The same index from the command line:
 
 ```bash
 python scripts/index_generic.py --database your_db

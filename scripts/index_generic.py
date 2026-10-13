@@ -13,9 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import get_settings
-from app.indexing.signals import build_generic_index
-from app.indexing.signals.store import read_source, save_generic_index
+from app.indexing.signals.store import index_database
 from app.mongo.client import get_client
 
 
@@ -36,28 +34,21 @@ def main() -> int:
     )
     args = parser.parse_args()
     client = get_client()
-    database = client[args.database]
-    names = args.collection or [
-        name
-        for name in sorted(database.list_collection_names())
-        if not name.startswith("system.")
-    ]
-    documents, scope = read_source(database, names, args.limit or None)
-    index = build_generic_index(
-        documents,
-        database=args.database,
-        sample_size=get_settings().generic_sample_size,
-        use_cache=False,
+    summary = index_database(
+        client,
+        args.database,
+        limit=args.limit or None,
+        collections=args.collection,
     )
-    save_generic_index(client, index, scope)
-    count = sum(len(rows) for rows in documents.values())
-    partial = [name for name, entry in scope.items() if not entry.get("complete")]
     print(
-        f"saved {args.database}: {count} documents, {len(index.cards)} cards, "
-        f"{len(index.plans)} plans"
+        f"saved {summary['database']}: {summary['documents']} documents, "
+        f"{summary['cards']} cards, {summary['plans']} plans"
     )
-    if partial:
-        print("partial collections (counts cover the saved ids only): " + ", ".join(partial))
+    if summary["partial"]:
+        print(
+            "partial collections (counts cover the saved ids only): "
+            + ", ".join(summary["partial"])
+        )
     print("Ask with scripts/ask_generic.py, or set MARE_GENERIC_INDEX=true and use POST /ask.")
     return 0
 
