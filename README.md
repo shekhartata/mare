@@ -115,7 +115,19 @@ Same tool loop as the demo, on a workload with no SaaS fields. Hybrid RAG, one c
 
 [reports/generic_utility.md](reports/generic_utility.md).
 
-Two smaller corpora (a shop, 5 documents, and a warehouse, 7) tie RAG at 8/8, because K=8 is the whole corpus and the linking document already stores the foreign key. One-shot `investigate`: [reports/generic_mare.md](reports/generic_mare.md). Tool loop: [reports/generic_agent.md](reports/generic_agent.md), mean 4 turns, 4.8k tokens, 12 s, against RAG at about 0.5k–0.7k tokens and 6 s.
+Shop (5 documents) and warehouse (7 documents), same tool loop. K=8 is the whole corpus, and the linking document already stores the foreign key, so both sides answer 8/8. One-shot `investigate`: [reports/generic_mare.md](reports/generic_mare.md). Tool loop: [reports/generic_agent.md](reports/generic_agent.md).
+
+| case | MARE | recall | ms | tok | turns | tools | RAG K=1 | recall | ms | tok | RAG K=8 | recall | ms | tok |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Shop lookup | yes | 1.00 | 9794 | 4032 | 4 | 3 | yes | 1.00 | 6006 | 311 | yes | 1.00 | 3671 | 454 |
+| Shop hop | yes | 0.00 | 10166 | 4199 | 4 | 3 | yes | 0.00 | 4652 | 306 | yes | 1.00 | 5076 | 584 |
+| Shop count | yes | 1.00 | 12102 | 4289 | 4 | 3 | yes | 1.00 | 6004 | 491 | yes | 1.00 | 4178 | 513 |
+| Shop absence | yes | n/a | 16496 | 6143 | 5 | 4 | yes | n/a | 12371 | 897 | yes | n/a | 11340 | 1089 |
+| Warehouse lookup | yes | 1.00 | 10668 | 4331 | 4 | 3 | yes | 1.00 | 5335 | 345 | yes | 1.00 | 6836 | 789 |
+| Warehouse count | yes | 1.00 | 10599 | 4684 | 4 | 3 | yes | 1.00 | 4280 | 359 | yes | 1.00 | 3996 | 592 |
+| Warehouse absence | yes | n/a | 15007 | 6488 | 5 | 4 | yes | n/a | 5752 | 557 | yes | n/a | 7641 | 1020 |
+| Warehouse hop | yes | 1.00 | 10747 | 4617 | 4 | 3 | yes | 0.00 | 4871 | 405 | yes | 1.00 | 4038 | 592 |
+| mean | **8/8** |  | **11947** | **4848** | **4** | **3** | **8/8** |  | **6159** | **459** | **8/8** |  | **5847** | **704** |
 
 ### Demo vs hybrid RAG (K=10)
 
@@ -144,7 +156,7 @@ MCP matches named lookup and absence. It misses the bridge and the distributed /
 
 ### Scale (10K incidents, LLM-on)
 
-Agent plus a small navigation index plus Mongo tools. Semantic nav is **604 vectors vs 60,000 RAG chunks (1%)**. Blind agent vs hybrid Top-K RAG. 20 held-out questions, 4 per category.
+Agent plus a small navigation index plus Mongo tools. Semantic nav is **604 vectors vs 60,000 RAG chunks**. Blind agent vs hybrid Top-K RAG. 20 held-out questions, 4 per category. The embedding footprint is about 1% of RAG; the loop spends more tokens and a little more latency to get there.
 
 | | MARE | RAG |
 | --- | ---: | ---: |
