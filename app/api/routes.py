@@ -37,6 +37,14 @@ def ask(body: AskRequest) -> AskResponse:
     if body.method == "legacy":
         session = run_adaptive(body.question, tenant_id=tenant)
         return _to_response(session, engine="legacy")
+    if get_settings().generic_index:
+        session = run_agent(
+            body.question,
+            handlers=_saved_generic_handlers(),
+            persist=False,
+            schema_in_prompt=False,
+        )
+        return _to_response(session, engine="generic")
     session = run_agent(body.question, tenant_id=tenant)
     return _to_response(session, engine="adaptive")
 
@@ -88,6 +96,17 @@ def nav_children(node_id: str) -> dict:
 @router.get("/metrics/vectors")
 def metrics_vectors() -> dict:
     return vector_counts()
+
+
+def _saved_generic_handlers() -> dict:
+    from app.indexing.signals.store import MissingGenericIndex, load_generic_handlers
+    from app.llm import get_embedding_model
+    from app.mongo.client import get_client
+
+    try:
+        return load_generic_handlers(get_client(), get_embedding_model())
+    except MissingGenericIndex as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def _to_response(session, engine: str) -> AskResponse:

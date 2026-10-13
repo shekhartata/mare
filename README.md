@@ -6,7 +6,7 @@ MARE indexes a MongoDB workload you already have. Point it at your collections. 
 
 RAG embeds every chunk and answers from Top-K. MARE embeds one card per neighborhood and cites `database.collection:document_id`.
 
-The packaged demo is a SaaS-ops corpus (`mare_demo`) used for the RAG comparison below. `POST /ask` runs that demo. Your database uses the calls in [Use it on your MongoDB](#use-it-on-your-mongodb). You do not edit collection names, `customer_id`, or the demo hop code.
+The packaged demo is a SaaS-ops corpus (`mare_demo`) used for the RAG comparison below. With `MARE_GENERIC_INDEX` left off, `POST /ask` runs that demo. Your database is indexed with [the commands below](#use-it-on-your-mongodb), and the saved cards can be queried from a later script, from `POST /ask`, or from MCP. You do not edit collection names, `customer_id`, or the demo hop code.
 
 This slice indexes the documents you load. It records traces. It does not rebuild the index from later questions.
 
@@ -22,41 +22,23 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Load the database you want to search, build the index, and ask. The example caps each collection at 1,000 documents. Raise the cap to cover the documents the answer must see. Grouping and retrieval use that load. A count or an empty result covers those documents. A receipt does not claim the rest of the cluster was scanned.
+Index the database once. The command reads each collection, writes neighborhood cards and hops into `_agent_retrieval`, and leaves your documents where they are. A later process on the same cluster loads those cards and reads the live collections.
 
-```python
-from app.indexing.signals import build_generic_index
-from app.llm import get_embedding_model
-from app.mongo.client import get_client
-from app.retrieval.agent_loop import run_agent
-from app.retrieval.generic_tools import generic_handlers
-
-db = get_client()["your_db"]
-documents = {
-    name: list(db[name].find().limit(1000))
-    for name in db.list_collection_names()
-    if not name.startswith("system.")
-}
-index = build_generic_index(documents, database="your_db")
-session = run_agent(
-    "Which order was refunded because a sweater pilled after one wash?",
-    handlers=generic_handlers(index, get_embedding_model()),
-    persist=False,
-    schema_in_prompt=False,
-)
-print(session.answer)
+```bash
+python scripts/index_generic.py --database your_db
+python scripts/ask_generic.py "Which order was refunded because a sweater pilled after one wash?"
 ```
 
-What that does:
+`--limit 1000` indexes the first 1,000 documents of each collection. Counts then cover that saved set. Omit `--limit` to index every document. `--collection orders` repeats for each collection you want to include.
+
+Set `MARE_GENERIC_INDEX=true` and the same saved index answers `POST /ask` and the MCP `ask` tool. Leave the flag off and those endpoints stay on the SaaS demo. `scripts/bootstrap.py` seeds `mare_demo` only.
+
+What the index uses:
 
 1. Field types come from up to 1,000 documents per collection (`MARE_GENERIC_SAMPLE_SIZE`). The model that proposes schema sees names and types, not values.
-2. Text fields are chosen from `reason`, `description`, `title`, `note`, `text`, `summary`, `comment`, and `name`. Pass `text_field_overrides={"orders": ("note",)}` when the useful prose lives elsewhere.
-3. A hop is kept when at least 80% of a string field's values equal `_id` in another collection. The agent then opens that specific document. A foreign key stored as an ObjectId is not a string, so it stays unreviewed until it is the same string as `_id`.
-4. The tool loop is schema-blind: `search_information`, `retrieve_evidence`, `query_documents`, `submit_answer`. No `tenant_id` is injected. `persist=False` keeps the session out of the demo store.
-
-`index.investigate(question)` is the same index with one retrieval and a receipt, and no tool loop.
-
-`MARE_GENERIC_INDEX` stays off. The demo server does not read it. `scripts/bootstrap.py` seeds `mare_demo` only.
+2. Text fields are chosen from `reason`, `description`, `title`, `note`, `text`, `summary`, `comment`, and `name`.
+3. A hop is kept when at least 80% of a string field's values equal `_id` in another collection. ObjectId values are matched as the same string. The agent then opens that document.
+4. The tool loop is schema-blind: `search_information`, `retrieve_evidence`, `query_documents`, `submit_answer`. No `tenant_id` is injected.
 
 ## When to use MARE
 
@@ -99,6 +81,8 @@ python scripts/run_comparison.py --informed   # schema-in-prompt control
 python scripts/run_comparison.py --mongo-mcp  # find/count MCP control
 python scripts/run_generic_agent.py --utility # abstract index vs RAG, bridge / distributed / absence
 python scripts/run_generic_agent.py           # same loop on the shop and warehouse fixtures
+python scripts/index_generic.py --database your_db
+python scripts/ask_generic.py "your question"
 ```
 
 ## Results
@@ -179,7 +163,7 @@ Question → schema-blind tool loop
               answer + database.collection:document_id
 ```
 
-On your database the cards live in the process: lexical overlap, plus an OpenAI embedding of each card when `OPENAI_API_KEY` is set. A related node carries the foreign key from the document that matched, so the next retrieve opens that target. `query_documents` accepts equality and range filters on fields the index has seen. `$where` is rejected.
+On your database the cards are the saved generic index in `_agent_retrieval`: lexical overlap, plus an OpenAI embedding of each card when `OPENAI_API_KEY` is set. A related node carries the foreign key from the document that matched, so the next retrieve opens that live document. `query_documents` accepts equality and range filters on fields the index has seen. `$where` is rejected.
 
 On the demo, the same loop searches Atlas `navigation_nodes` (`nav_lexical` plus one `voyage-4-lite` vector per card) and then `find`s `mare_demo`. Ten thousand incidents become about 604 vectors against about 60,000 chunks. `scripts/probe_capabilities.py` records whether autoEmbed is active.
 

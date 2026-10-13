@@ -1,4 +1,8 @@
-"""Same MARE tool names, backed by an in-memory generic index. No tenant injection."""
+"""Same MARE tool names over a generic index. No tenant injection.
+
+Pass a reader to fetch live Mongo documents. Without one, the index's
+in-memory documents are used.
+"""
 
 from __future__ import annotations
 
@@ -16,8 +20,14 @@ _DOC_CHARS = 1400
 
 
 class GenericSurface:
-    def __init__(self, index: Any, embedder: Any | None = None) -> None:
+    def __init__(
+        self,
+        index: Any,
+        embedder: Any | None = None,
+        reader: Any | None = None,
+    ) -> None:
         self.index = index
+        self._reader = reader
         self.nodes = _nodes(index)
         self._by_id = {str(node["_id"]): node for node in self.nodes}
         self._embedder = embedder
@@ -129,14 +139,10 @@ class GenericSurface:
         if "." not in (namespace or ""):
             return {"error": "namespace must be database.collection"}
         database, collection = namespace.split(".", 1)
-        if database != self.index.database or collection not in self.index.documents:
+        if database != self.index.database or not self._known(collection):
             return {"error": f"unknown namespace {namespace}"}
         cap = max(1, min(int(limit or 10), 20))
-        matched = [
-            doc
-            for doc in self.index.documents[collection]
-            if _matches(doc, filt)
-        ][:cap]
+        matched = self._rows(collection, filt=filt, limit=cap)
         docs = [_payload(doc, database, collection) for doc in matched]
         return {
             "count": len(docs),
@@ -205,9 +211,10 @@ class GenericSurface:
                                 "filter": {to_field: value},
                                 "document_ids": [
                                     str(row.get("_id"))
-                                    for row in self.index.documents.get(target) or []
-                                    if _eq(row.get(to_field), value)
-                                ][:8],
+                                    for row in self._rows(
+                                        target, filt={to_field: value}, limit=8
+                                    )
+                                ],
                             },
                             "children_preview": [],
                         }
@@ -217,20 +224,43 @@ class GenericSurface:
         return out
 
     def _members(self, collection: str, document_ids: list[Any]) -> list[dict[str, Any]]:
-        wanted = {str(i) for i in document_ids}
-        if not wanted:
+        if not document_ids:
             return []
-        rows = list(self.index.documents.get(collection) or [])
-        return [doc for doc in rows if str(doc.get("_id")) in wanted]
+        return self._rows(collection, ids=document_ids)
 
     def _hop_docs(self, node_id: str, limit: int) -> list[dict[str, Any]]:
         _prefix, collection, field, value = node_id.split(":", 3)
-        rows = [
-            doc
-            for doc in self.index.documents.get(collection) or []
-            if _eq(doc.get(field), value)
-        ]
-        return [_payload(doc, self.index.database, collection) for doc in rows[:limit]]
+        rows = self._rows(collection, filt={field: value}, limit=limit)
+        return [_payload(doc, self.index.database, collection) for doc in rows]
+
+    def _known(self, collection: str) -> bool:
+        if collection in (self.index.documents or {}):
+            return True
+        names = {
+            str(coll.get("name"))
+            for coll in (self.index.profile.get("collections") or [])
+        }
+        return collection in names
+
+    def _rows(
+        self,
+        collection: str,
+        *,
+        ids: list[Any] | None = None,
+        filt: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if self._reader is not None:
+            return self._reader.fetch(collection, ids=ids, filt=filt, limit=limit)
+        rows = list(self.index.documents.get(collection) or [])
+        if ids:
+            wanted = {str(i) for i in ids}
+            rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
+        if filt:
+            rows = [doc for doc in rows if _matches(doc, filt)]
+        if limit is not None:
+            rows = rows[: int(limit)]
+        return rows
 
     def _scoped(self, scope: str | None) -> list[dict[str, Any]]:
         if not scope:
@@ -269,13 +299,20 @@ class GenericSurface:
         source = node.get("source") or {}
         collection = str(source.get("collection") or "")
         database = str(source.get("database") or self.index.database)
-        rows = list(self.index.documents.get(collection) or [])
-        ids = {str(i) for i in (source.get("document_ids") or [])}
-        if ids:
-            rows = [doc for doc in rows if str(doc.get("_id")) in ids]
+        id_list = list(source.get("document_ids") or [])
         filt = source.get("filter") or {}
-        if filt and filt != {"_id": {"$in": list(source.get("document_ids") or [])}}:
-            rows = [doc for doc in rows if _matches(doc, filt)]
+        applied = None
+        if filt and filt != {"_id": {"$in": id_list}}:
+            applied = filt
+        fetch_limit = None
+        if self._reader is not None and not id_list and applied is None:
+            fetch_limit = max(limit, 20)
+        rows = self._rows(
+            collection,
+            ids=id_list or None,
+            filt=applied,
+            limit=fetch_limit,
+        )
         if query:
             ranked = sorted(
                 rows,
@@ -291,8 +328,12 @@ class GenericSurface:
         return [_payload(doc, database, collection) for doc in rows[:limit]]
 
 
-def generic_handlers(index: Any, embedder: Any | None = None) -> dict[str, Any]:
-    return GenericSurface(index, embedder).handlers()
+def generic_handlers(
+    index: Any,
+    embedder: Any | None = None,
+    reader: Any | None = None,
+) -> dict[str, Any]:
+    return GenericSurface(index, embedder, reader).handlers()
 
 
 def _nodes(index: Any) -> list[dict[str, Any]]:
