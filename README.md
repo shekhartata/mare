@@ -2,28 +2,126 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-MARE is an **agentic retrieval** layer on MongoDB: a small navigation index to find the neighborhood, then live `find` / filter / count against the source of record. It is not a cheaper chunk index.
+MARE indexes a MongoDB workload you already have. Point it at your collections. It profiles the fields, groups documents into neighborhoods, and keeps a hop only when a string field actually matches another collection's `_id`. A question then runs the tool loop: search a neighborhood, read the documents, follow that hop, filter or count.
 
-RAG embeds every chunk and answers from Top-K. MARE embeds neighborhoods, lets the agent hop, and cites `database.collection:document_id`.
+RAG embeds every chunk and answers from Top-K. MARE embeds one card per neighborhood and cites `database.collection:document_id`.
 
-**This repo is a working demo of that pattern**, not a drop-in for an arbitrary Mongo cluster. Query time is schema-blind; the **index and hops assume this SaaS-ops corpus** (`mare_demo`: customers, tickets, deployments, migrations, incidents, logs, joined on `customer_id`). Pointing `MONGODB_URI` at your database is not enough.
+The packaged demo is a SaaS-ops corpus (`mare_demo`) used for the RAG comparison below. With `MARE_GENERIC_INDEX` left off, `POST /ask` runs that demo. Index your database from the [connect page](#use-it-on-your-mongodb). The saved cards can be queried on that page, from a later script, from `POST /ask`, or from MCP. You do not edit collection names, `customer_id`, or the demo hop code.
 
-To run it on your data, retarget:
+This slice indexes the documents you load. It records traces. It does not rebuild the index from later questions.
 
-| What | Where |
+**Contents:** [Your MongoDB](#use-it-on-your-mongodb) · [When to use](#when-to-use-mare) · [Demo](#packaged-demo) · [Results](#results) · [How a question is answered](#how-a-question-is-answered)
+
+## Use it on your MongoDB
+
+Python 3.12+. Put `OPENAI_API_KEY` in `.env` (`OPENAI_MODEL=gpt-5`, `OPENAI_MODEL_AGENT=gpt-5-mini`). The connect page takes the MongoDB connection string in the browser and does not store it. `MONGODB_URI` is for the command-line index and the SaaS demo.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+```
+
+Index the database once. Cards and hops are written to `_agent_retrieval` on that cluster. Your documents stay where they are. A later process on the same cluster loads those cards and reads the live collections.
+
+```bash
+uvicorn app.main:app --port 8080
+```
+
+Open `http://localhost:8080`. Paste the connection string, choose the database, and index. Asking on the page is optional. Closing it leaves the cards on the cluster.
+
+The same index from the command line:
+
+```bash
+python scripts/index_generic.py --database your_db
+python scripts/ask_generic.py "Which order was refunded because a sweater pilled after one wash?"
+```
+
+`--limit 1000` indexes the first 1,000 documents of each collection. Counts then cover that saved set. Omit `--limit` to index every document. `--collection orders` repeats for each collection you want to include.
+
+Set `MARE_GENERIC_INDEX=true` and the same saved index answers `POST /ask` and the MCP `ask` tool. Leave the flag off and those endpoints stay on the SaaS demo. `scripts/bootstrap.py` seeds `mare_demo` only.
+
+What the index uses:
+
+1. Field types come from up to 1,000 documents per collection (`MARE_GENERIC_SAMPLE_SIZE`). The model that proposes schema sees names and types, not values.
+2. Text fields are chosen from `reason`, `description`, `title`, `note`, `text`, `summary`, `comment`, and `name`.
+3. A hop is kept when at least 80% of a string field's values equal `_id` in another collection. ObjectId values are matched as the same string. The agent then opens that document.
+4. The tool loop is schema-blind: `search_information`, `retrieve_evidence`, `query_documents`, `submit_answer`. No `tenant_id` is injected.
+
+## When to use MARE
+
+| Question | Use |
 | --- | --- |
-| Source DB, collections, query allowlist | `app/constants.py`, `app/search/service.py` |
-| Neighborhood grouping, then rebuild Atlas indexes | `app/indexing/grouping.py`, `app/indexing/hierarchy_builder.py` |
-| Cross-collection hops (`related_nodes`) | `app/retrieval/tools.py` (`customer_id` / `cust_`) |
-| Optional: “looks like an ID” vs “why” routing | `app/search/router.py` |
+| The id is already in the question | RAG or `find` |
+| The answer lives on another document, joined by an id the question never names | **MARE** |
+| The cause is split across collections | **MARE** |
+| You need a count or a proof that nothing matched, inside the documents you loaded | **MARE** or `find` |
+| You want the nearest chunks | RAG |
 
-Documents still need `tenant_id` (injected on every `find`). Do not run `scripts/bootstrap.py` on production — that seeds the demo.
+On a 74-document workload built so the answer is not on the nearest chunk, the schema-blind loop (`gpt-5-mini` tools, `gpt-5` answers) beat hybrid RAG at the product default K=8. Bridge: the carrier lane existed only on the order. Distributed: the assay finding existed only on the assay. RAG K=1 and K=8 both missed them (gold recall 0.00). MARE retrieved the hidden document both times (recall 1.00). Absence was a tie: both answered 0. Mean MARE was 5 turns, 8.3k tokens, 21 s. RAG was one Top-K call, about 0.6k–0.8k tokens and 7 s. Write-up: [reports/generic_utility.md](reports/generic_utility.md).
 
-**Contents:** [Results](#results) · [When to use](#when-to-use-mare) · [Quickstart](#quickstart) · [Integrate](#integrate) · [Architecture](#architecture) · [How a question is answered](#how-a-question-is-answered)
+## Packaged demo
+
+The demo is the SaaS corpus the RAG numbers below were measured on. Atlas 8.0.
+
+```bash
+python scripts/bootstrap.py
+uvicorn app.main:app --reload --port 8080
+curl -s localhost:8080/ask -H 'Content-Type: application/json' \
+  -d '{"question":"How many customers are on the enterprise subscription tier?"}'
+```
+
+`POST /ask/rag` is the same question through conventional RAG. Leave `MARE_SCHEMA_IN_PROMPT=false`. No API key means the heuristic reasoner, which is for tests.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /ask` | Demo agent loop, grounded citations |
+| `POST /ask/rag` | Top-K RAG on the demo corpus |
+| `GET /sessions/{id}` / `.../traces` | Answer and every tool step |
+| `GET /navigation/...` | Browse the demo hierarchy |
+| `GET /metrics/vectors` | Demo MARE vs RAG vector counts |
+
+MCP for the demo: `python -m app.mcp_server.server`. Tools: `ask`, `search_information`, `retrieve_evidence`, `query_documents`, `read_documents`. Tenant scope is injected on that path.
+
+```bash
+python scripts/run_comparison.py              # demo cases
+python scripts/run_comparison.py --informed   # schema-in-prompt control
+python scripts/run_comparison.py --mongo-mcp  # find/count MCP control
+python scripts/run_generic_agent.py --utility # abstract index vs RAG, bridge / distributed / absence
+python scripts/run_generic_agent.py           # same loop on the shop and warehouse fixtures
+python scripts/index_generic.py --database your_db
+python scripts/ask_generic.py "your question"
+```
 
 ## Results
 
-### Demo (schema-blind agent vs hybrid RAG, K=10)
+### Abstract index (74 documents)
+
+Same tool loop as the demo, on a workload with no SaaS fields. Hybrid RAG, one chunk per document. K=8 is the product default and is not the whole database.
+
+| Case | MARE | Recall | RAG K=1 | RAG K=8 |
+| --- | --- | ---: | --- | --- |
+| Bridge (carrier only on the order) | yes | 1.00 | no | no |
+| Distributed (finding only on the assay) | yes | 1.00 | no | no |
+| Absence (`sku_plain` in April) | yes | n/a | yes | yes |
+
+[reports/generic_utility.md](reports/generic_utility.md).
+
+Shop (5 documents) and warehouse (7 documents), same tool loop. K=8 is the whole corpus, and the linking document already stores the foreign key, so both sides answer 8/8. One-shot `investigate`: [reports/generic_mare.md](reports/generic_mare.md). Tool loop: [reports/generic_agent.md](reports/generic_agent.md).
+
+| case | MARE | recall | ms | tok | turns | tools | RAG K=1 | recall | ms | tok | RAG K=8 | recall | ms | tok |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Shop lookup | yes | 1.00 | 9794 | 4032 | 4 | 3 | yes | 1.00 | 6006 | 311 | yes | 1.00 | 3671 | 454 |
+| Shop hop | yes | 0.00 | 10166 | 4199 | 4 | 3 | yes | 0.00 | 4652 | 306 | yes | 1.00 | 5076 | 584 |
+| Shop count | yes | 1.00 | 12102 | 4289 | 4 | 3 | yes | 1.00 | 6004 | 491 | yes | 1.00 | 4178 | 513 |
+| Shop absence | yes | n/a | 16496 | 6143 | 5 | 4 | yes | n/a | 12371 | 897 | yes | n/a | 11340 | 1089 |
+| Warehouse lookup | yes | 1.00 | 10668 | 4331 | 4 | 3 | yes | 1.00 | 5335 | 345 | yes | 1.00 | 6836 | 789 |
+| Warehouse count | yes | 1.00 | 10599 | 4684 | 4 | 3 | yes | 1.00 | 4280 | 359 | yes | 1.00 | 3996 | 592 |
+| Warehouse absence | yes | n/a | 15007 | 6488 | 5 | 4 | yes | n/a | 5752 | 557 | yes | n/a | 7641 | 1020 |
+| Warehouse hop | yes | 1.00 | 10747 | 4617 | 4 | 3 | yes | 0.00 | 4871 | 405 | yes | 1.00 | 4038 | 592 |
+| mean | **8/8** |  | **11947** | **4848** | **4** | **3** | **8/8** |  | **6159** | **459** | **8/8** |  | **5847** | **704** |
+
+### Demo vs hybrid RAG (K=10)
 
 Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%).
 
@@ -36,21 +134,21 @@ Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%).
 | **Distributed** (Northstar) | **yes** | **no** at K=10; yes at K=20 | Lookalike customer at default K. |
 | Variable-K Apex (small / medium / deep) | no / yes / yes | no† / yes / yes | †RAG K=5 complete on small; K=10 omitted the entity. |
 
-MARE is for questions Top-K cannot structurally answer: unnamed hops, absence, distributed evidence. Named-ID lookups are a fast RAG/`find` path. Full prompts and traces: [reports/README.md](reports/README.md).
+Full prompts and traces: [reports/README.md](reports/README.md).
 
-### Demo vs Mongo MCP (no navigation index)
+### Demo vs Mongo MCP
 
-Same nine questions, schema-blind `list` / `schema` / `find` / `count`. No `related_nodes`.
+Same nine questions, schema-blind `list` / `schema` / `find` / `count`, no navigation index.
 
 | | MARE | MCP | RAG |
 | --- | ---: | ---: | ---: |
 | Answer correct | **7/9** | 3/9 | 4/9 |
 
-MCP matches on **named lookup** and **absence** (empty `find`). It fails **bridge** and **distributed / variable-K hops** (found the customer, no second collection). Details: [reports/mongo_mcp.md](reports/mongo_mcp.md).
+MCP matches named lookup and absence. It misses the bridge and the distributed / variable-K hops. [reports/mongo_mcp.md](reports/mongo_mcp.md).
 
 ### Scale (10K incidents, LLM-on)
 
-Same job as the product: **agent + small navigation index + Mongo tools**, not a chunk-for-chunk retrieval bake-off. Semantic nav is **604 vectors vs 60,000 RAG chunks (1%)**. Blind agent (`gpt-5-mini` tools, `gpt-5` answers) vs hybrid Top-K RAG (`gpt-5`). 20 held-out questions, 4 per category.
+Agent plus a small navigation index plus Mongo tools. Semantic nav is **604 vectors vs 60,000 RAG chunks**. Blind agent vs hybrid Top-K RAG. 20 held-out questions, 4 per category. The embedding footprint is about 1% of RAG; the loop spends more tokens and a little more latency to get there.
 
 | | MARE | RAG |
 | --- | ---: | ---: |
@@ -61,157 +159,47 @@ Same job as the product: **agent + small navigation index + Mongo tools**, not a
 | Tokens | **15.7k** | 2.1k |
 | Tool calls | 4.5 | 0 |
 
-The agent matches RAG answer quality on this sample while storing far fewer vectors. The default tool loop stubs old search/retrieve JSON to receipts (`MARE_COMPACT=true`) so prompt replay stays bounded. Full-history vanilla was 40.6k tokens / 25 s.
+Receipts are on by default (`MARE_COMPACT=true`). Full-history vanilla was 40.6k tokens / 25 s. [ACGC](https://github.com/shekhartata/acgcProject) stays off (`MARE_ACGC=false`); the sidecar on top of receipts did not cut tokens (19.7k). Ablation: [reports/scale/llm_on_acgc_ablation.md](reports/scale/llm_on_acgc_ablation.md). Retrieval-only scoring of the navigation index: [reports/scale/README.md](reports/scale/README.md).
 
-[ACGC](https://github.com/shekhartata/acgcProject) remains opt-in (`MARE_ACGC=false`). Same 20 questions, sidecar on top of receipts did not cut tokens further:
-
-| | Receipts (default) | + [ACGC](https://github.com/shekhartata/acgcProject) | RAG |
-| --- | ---: | ---: | ---: |
-| Answer correct | 19/20 | 20/20 | 18/20 |
-| Gold-id recall | 0.32 | 0.46 | 0.28 |
-| Mean tokens | **15.7k** | 19.7k | 2.1k |
-| Worst query | **44k** | 53k | — |
-| Latency | 37 s | 35 s | 12 s |
-
-Ablation: [reports/scale/llm_on_acgc_ablation.md](reports/scale/llm_on_acgc_ablation.md).
-
-A separate retrieval-only pass (no agent) scores the navigation index as a map, not as a chunk replacement — details in [reports/scale/README.md](reports/scale/README.md).
-
-## When to use MARE
-
-| Question | Use |
-| --- | --- |
-| ID is in the prompt | RAG or `find` |
-| Entity not named; need a hop | **MARE** |
-| Count / filter over a collection | **MARE** (path); check the answer still counts |
-| Prove nothing matched | MARE or `find` |
-| Cause split across records; lookalike customers | **MARE** at default K; RAG if you raise K |
-| “Pass the context” semantic search | RAG |
-
----
-
-## Quickstart
-
-Python 3.12+, Atlas 8.0.
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env   # MONGODB_URI, OPENAI_API_KEY, OPENAI_MODEL=gpt-5, OPENAI_MODEL_AGENT=gpt-5-mini
-python scripts/bootstrap.py
-uvicorn app.main:app --reload --port 8080
-curl -s localhost:8080/ask -H 'Content-Type: application/json' \
-  -d '{"question":"How many customers are on the enterprise subscription tier?"}'
-```
-
-`POST /ask/rag` is the same question through conventional RAG. No API key → heuristic reasoner (tests only). Keep `MARE_SCHEMA_IN_PROMPT=false`.
-
-## Integrate
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /ask` | Agent loop, grounded citations |
-| `POST /ask/rag` | Top-K RAG baseline |
-| `GET /sessions/{id}` / `.../traces` | Answer and every tool step |
-| `GET /navigation/...` | Browse the hierarchy |
-| `GET /metrics/vectors` | MARE vs RAG vector counts |
-
-MCP: `python -m app.mcp_server.server`. Tools: `ask`, `search_information`, `retrieve_evidence`, `query_documents`, `read_documents`. Tenant scope is injected server-side; the model cannot widen it.
-
-Reproduce:
-
-```bash
-python scripts/run_comparison.py              # demo cases
-python scripts/run_comparison.py --informed   # schema-in-prompt control
-python scripts/run_comparison.py --mongo-mcp  # find/count MCP control (reuses stored MARE/RAG)
-python scripts/seed_scale.py --n 10000
-python scripts/build_scale.py --n 10000 --strategy semantic --density 20 --chunk-size 512 --skip-rag
-python scripts/run_scale_retrieval.py --n 10000 --budget 10 --split heldout --engine mare --density 20 --strategy semantic
-python scripts/run_scale_llm.py --n 10000 --strategy semantic --density 20 --per-category 4 --split heldout
-```
-
----
-
-## Architecture
+## How a question is answered
 
 ```text
 Question → schema-blind tool loop
-              ├── Navigation  (where?)  →  navigation_nodes   one vector per neighborhood
-              └── Retrieval   (what?)   →  raw Mongo docs     find / filter / count / read
+              ├── Navigation  (where?)  →  one card per neighborhood
+              └── Retrieval   (what?)   →  the documents you loaded, or live demo Mongo
                          ↓
               answer + database.collection:document_id
 ```
 
-RAG embeds **content fragments** (every chunk). MARE embeds **neighborhood cards** that point at live Mongo. Raw documents stay in `mare_demo` / `mare_scale`; they are never copied into the vector store.
+On your database the cards are the saved generic index in `_agent_retrieval`: lexical overlap, plus an OpenAI embedding of each card when `OPENAI_API_KEY` is set. A related node carries the foreign key from the document that matched, so the next retrieve opens that live document. `query_documents` accepts equality and range filters on fields the index has seen. `$where` is rejected.
 
-### What gets a vector
-
-`build_hierarchy` writes a small tree into `navigation_nodes`:
-
-```text
-database
-  └── collection     schema: field names, examples, topics
-        └── group    a neighborhood (customer slice on the demo; semantic prototype at 10K)
-              └── optional document pointer   (tiny collections only)
-```
-
-Each node is a pointer (`database`, `collection`, `filter` / `document_ids`) plus a compact `search_text` string: name, collection, summary, important fields, entity ids, topic terms. **Not** the full document body.
-
-Atlas then indexes that card twice, both on `search_text`:
-
-| Index | Type | What it is |
-| --- | --- | --- |
-| `nav_lexical` | Atlas Search (`$search`) | Inverted index for ids, error codes, names |
-| `nav_vector` | Vector Search (`$vectorSearch`) | **One** `voyage-4-lite` autoEmbed vector per node |
-
-So 10K incidents → ~604 nav vectors vs ~60,000 chunk vectors. Demo: 616 vs 5,424. Same embedding model as RAG; far fewer rows because the unit is a neighborhood, not a chunk.
-
-If autoEmbed is unavailable, MARE falls back to app-side embeddings. `scripts/probe_capabilities.py` records which path is active.
-
-### How a question is answered
-
-The LLM never sees embeddings or the navigation catalog. It sees the question and tool schemas, then discovers neighborhoods from tool results.
+On the demo, the same loop searches Atlas `navigation_nodes` (`nav_lexical` plus one `voyage-4-lite` vector per card) and then `find`s `mare_demo`. Ten thousand incidents become about 604 vectors against about 60,000 chunks. `scripts/probe_capabilities.py` records whether autoEmbed is active.
 
 ```mermaid
 flowchart TD
     Q[Question] --> LLM["LLM sees question + tool schemas"]
-    LLM -->|"search_information"| RX{"Python regex: question shape?"}
-    RX -->|"ids / error codes"| LEX[lexical]
-    RX -->|"why / similar"| SEM[semantic]
-    RX -->|"both or default"| HYB[hybrid]
-    LEX --> AT["Atlas searches navigation_nodes"]
-    SEM --> AT
-    HYB --> AT
-    AT -->|"neighborhood cards"| LLM
-    LLM -->|"retrieve_evidence or query_documents"| MN["Mongo find on live docs"]
-    MN -->|"documents"| LLM
+    LLM -->|"search_information"| NAV["Neighborhood cards"]
+    NAV -->|"related_nodes, bound to the matched key"| LLM
+    LLM -->|"retrieve_evidence or query_documents"| DOCS["Source documents"]
+    DOCS --> LLM
     LLM --> DEC{"Enough evidence?"}
-    DEC -->|"no: search again or hop related_nodes"| RX
-    DEC -->|"no: read more docs"| MN
+    DEC -->|"follow the hop or search again"| NAV
     DEC -->|"yes"| ANS["submit_answer → cited answer"]
 ```
 
-Not enough means stay in the loop: search again, follow `related_nodes`, or read more documents. That continues until `submit_answer` or the turn budget (default 10).
-
-`search_information` runs **only on `navigation_nodes`**. Hits include `important_fields` and **`related_nodes`** (same entity, other collections) — that is the hop. `retrieve_evidence` then `find`s the **source** collection. No extra vectors. Once a field name has been seen, `query_documents` can count, filter, or return zero rows.
-
-| Database | Role |
-| --- | --- |
-| `mare_demo` / `mare_scale` | System of record. Untouched. |
-| `_agent_retrieval` / `_agent_scale_*` | Navigation nodes, sessions, traces. |
-| `_rag_baseline` / `_rag_scale_*` | Chunk RAG, same autoEmbed model. |
+The loop stops at `submit_answer` or the turn budget (default 10).
 
 ```bash
 pytest -q
 ```
 
 ```text
-app/indexing/   hierarchy, topical + semantic grouping
-app/search/     lexical / vector / hybrid / structured tools
-app/retrieval/  agent loop
-app/eval/       answer scoring + scale IR
-app/baseline/   RAG
-app/mcp_server/ FastMCP
+app/indexing/signals/   generic index: profile, validate, plans
+app/indexing/           demo hierarchy and semantic grouping
+app/retrieval/          agent loop and generic tool handlers
+app/search/             demo lexical / vector / hybrid tools
+app/baseline/           RAG, including the in-memory hybrid used above
+app/eval/               answer scoring
 ```
 
 ## License

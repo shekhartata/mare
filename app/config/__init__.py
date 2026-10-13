@@ -92,6 +92,14 @@ class Settings(BaseSettings):
     schema_sample_size: int = 80
     auto_embed_model: str = "voyage-4-lite"
 
+    # Generic indexing (opt-in). Demo SaaS path stays the default.
+    generic_index: bool = Field(
+        default=False, validation_alias=AliasChoices("MARE_GENERIC_INDEX", "generic_index")
+    )
+    generic_sample_size: int = Field(
+        default=1000, validation_alias=AliasChoices("MARE_GENERIC_SAMPLE_SIZE", "generic_sample_size")
+    )
+
     # Receipt compact on the tool loop (default on). ACGC sidecar is separate and off.
     compact_context: bool = Field(
         default=True, validation_alias=AliasChoices("MARE_COMPACT", "compact_context")

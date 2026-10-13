@@ -1,0 +1,1327 @@
+{
+  "generated": "2026-10-13T10:42:23.857135+00:00",
+  "agent_model": "gpt-5-mini",
+  "answer_model": "gpt-5",
+  "embedder": true,
+  "rag_ks": [
+    1,
+    8
+  ],
+  "cases": [
+    {
+      "id": "shop_lookup",
+      "database": "mare_shop",
+      "title": "Shop lookup",
+      "question": "What is the status of order ord_1044?",
+      "mare": {
+        "answer": "Order ord_1044 is shipped (mare_shop.orders:ord_1044).",
+        "tokens": 4032,
+        "elapsed_ms": 9794.3,
+        "retrieved": [
+          {
+            "collection": "orders",
+            "document_id": "ord_1044",
+            "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02T00:00:00\nsku: sku_wool\nline_items: [{ sku=sku_wool, qty=1 }]"
+          },
+          {
+            "collection": "orders",
+            "document_id": "ord_2001",
+            "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01T00:00:00\nsku: sku_mug\nline_items: [{ sku=sku_mug, qty=2 }]"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 2,
+          "useful_documents": 1,
+          "irrelevant_documents": 1,
+          "retrieved_token_count": 26,
+          "useful_evidence_tokens": 13,
+          "context_efficiency": 0.5,
+          "required_evidence_count": 1,
+          "hit": [
+            "orders:ord_1044"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "shipped"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "Shipped. [orders ord_1044]",
+          "tokens": 311,
+          "elapsed_ms": 6006.2,
+          "retrieved": [
+            {
+              "collection": "orders",
+              "document_id": "ord_1044",
+              "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02\nsku: sku_wool\nline_items: [{'sku': 'sku_wool', 'qty': 1}]"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 1,
+            "irrelevant_documents": 0,
+            "retrieved_token_count": 13,
+            "useful_evidence_tokens": 13,
+            "context_efficiency": 1.0,
+            "required_evidence_count": 1,
+            "hit": [
+              "orders:ord_1044"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "shipped"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "Shipped [orders ord_1044]",
+          "tokens": 454,
+          "elapsed_ms": 3670.8,
+          "retrieved": [
+            {
+              "collection": "orders",
+              "document_id": "ord_1044",
+              "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02\nsku: sku_wool\nline_items: [{'sku': 'sku_wool', 'qty': 1}]"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_2001",
+              "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01\nsku: sku_mug\nline_items: [{'sku': 'sku_mug', 'qty': 2}]"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_mug",
+              "text": "_id: sku_mug\nname: Ceramic mug\nprice: 12"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_wool",
+              "text": "_id: sku_wool\nname: Wool sweater\nprice: 80"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 5,
+            "useful_documents": 1,
+            "irrelevant_documents": 4,
+            "retrieved_token_count": 54,
+            "useful_evidence_tokens": 13,
+            "context_efficiency": 0.241,
+            "required_evidence_count": 1,
+            "hit": [
+              "orders:ord_1044"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "shipped"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "shop_hop",
+      "database": "mare_shop",
+      "title": "Shop hop",
+      "question": "Which order was refunded because a sweater pilled after one wash?",
+      "mare": {
+        "answer": "Order ord_1044 (mare_shop.refunds:ref_9).",
+        "tokens": 4199,
+        "elapsed_ms": 10166.3,
+        "retrieved": [
+          {
+            "collection": "refunds",
+            "document_id": "ref_9",
+            "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18T00:00:00"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 0.0,
+          "critical_evidence_missing": [
+            "orders:ord_1044"
+          ],
+          "documents_retrieved": 1,
+          "useful_documents": 0,
+          "irrelevant_documents": 1,
+          "retrieved_token_count": 14,
+          "useful_evidence_tokens": 0,
+          "context_efficiency": 0.0,
+          "required_evidence_count": 1,
+          "hit": []
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "ord_1044"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "ord_1044 [ref_9]",
+          "tokens": 306,
+          "elapsed_ms": 4651.7,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "orders:ord_1044"
+            ],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 14,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "ord_1044"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "ord_1044 [ref_9]",
+          "tokens": 584,
+          "elapsed_ms": 5075.6,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_wool",
+              "text": "_id: sku_wool\nname: Wool sweater\nprice: 80"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_1044",
+              "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02\nsku: sku_wool\nline_items: [{'sku': 'sku_wool', 'qty': 1}]"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_2001",
+              "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01\nsku: sku_mug\nline_items: [{'sku': 'sku_mug', 'qty': 2}]"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_mug",
+              "text": "_id: sku_mug\nname: Ceramic mug\nprice: 12"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 5,
+            "useful_documents": 1,
+            "irrelevant_documents": 4,
+            "retrieved_token_count": 54,
+            "useful_evidence_tokens": 13,
+            "context_efficiency": 0.241,
+            "required_evidence_count": 1,
+            "hit": [
+              "orders:ord_1044"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "ord_1044"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "shop_count",
+      "database": "mare_shop",
+      "title": "Shop count",
+      "question": "How many refunds are for sku_wool?",
+      "mare": {
+        "answer": "1 refund for sku_wool (mare_shop.refunds:ref_9). This count is based only on the provided evidence; there may be additional refunds not shown.",
+        "tokens": 4289,
+        "elapsed_ms": 12101.7,
+        "retrieved": [
+          {
+            "collection": "refunds",
+            "document_id": "ref_9",
+            "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18T00:00:00"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 1,
+          "useful_documents": 1,
+          "irrelevant_documents": 0,
+          "retrieved_token_count": 14,
+          "useful_evidence_tokens": 14,
+          "context_efficiency": 1.0,
+          "required_evidence_count": 1,
+          "hit": [
+            "refunds:ref_9"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "1"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "1 (ref_9)",
+          "tokens": 491,
+          "elapsed_ms": 6004.0,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 1,
+            "irrelevant_documents": 0,
+            "retrieved_token_count": 14,
+            "useful_evidence_tokens": 14,
+            "context_efficiency": 1.0,
+            "required_evidence_count": 1,
+            "hit": [
+              "refunds:ref_9"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "1"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "1 (ref_9)",
+          "tokens": 513,
+          "elapsed_ms": 4178.5,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_1044",
+              "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02\nsku: sku_wool\nline_items: [{'sku': 'sku_wool', 'qty': 1}]"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_wool",
+              "text": "_id: sku_wool\nname: Wool sweater\nprice: 80"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_2001",
+              "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01\nsku: sku_mug\nline_items: [{'sku': 'sku_mug', 'qty': 2}]"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_mug",
+              "text": "_id: sku_mug\nname: Ceramic mug\nprice: 12"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 5,
+            "useful_documents": 1,
+            "irrelevant_documents": 4,
+            "retrieved_token_count": 54,
+            "useful_evidence_tokens": 14,
+            "context_efficiency": 0.259,
+            "required_evidence_count": 1,
+            "hit": [
+              "refunds:ref_9"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "1"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "shop_absence",
+      "database": "mare_shop",
+      "title": "Shop absence",
+      "question": "How many refunds are for sku_mug?",
+      "mare": {
+        "answer": "0 refunds for sku_mug in the provided evidence (mare_shop.refunds:ref_9). Only one refund record was provided, so the evidence may be incomplete.",
+        "tokens": 6143,
+        "elapsed_ms": 16495.8,
+        "retrieved": [
+          {
+            "collection": "refunds",
+            "document_id": "ref_9",
+            "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18T00:00:00"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": null,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 1,
+          "useful_documents": 0,
+          "irrelevant_documents": 1,
+          "retrieved_token_count": 14,
+          "useful_evidence_tokens": 0,
+          "context_efficiency": 0.0,
+          "required_evidence_count": null,
+          "hit": []
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "0"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 5,
+        "tool_calls": 4,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "0 \u2014 the provided chunk shows an order for sku_mug with no refunds listed (ord_2001).",
+          "tokens": 897,
+          "elapsed_ms": 12370.8,
+          "retrieved": [
+            {
+              "collection": "orders",
+              "document_id": "ord_2001",
+              "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01\nsku: sku_mug\nline_items: [{'sku': 'sku_mug', 'qty': 2}]"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 13,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "0 [ref_9]",
+          "tokens": 1089,
+          "elapsed_ms": 11340.4,
+          "retrieved": [
+            {
+              "collection": "orders",
+              "document_id": "ord_2001",
+              "text": "_id: ord_2001\nstatus: placed\nplaced_at: 2024-04-01\nsku: sku_mug\nline_items: [{'sku': 'sku_mug', 'qty': 2}]"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_mug",
+              "text": "_id: sku_mug\nname: Ceramic mug\nprice: 12"
+            },
+            {
+              "collection": "orders",
+              "document_id": "ord_1044",
+              "text": "_id: ord_1044\nstatus: shipped\nplaced_at: 2024-03-02\nsku: sku_wool\nline_items: [{'sku': 'sku_wool', 'qty': 1}]"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_9",
+              "text": "_id: ref_9\norder_id: ord_1044\nsku: sku_wool\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            },
+            {
+              "collection": "products",
+              "document_id": "sku_wool",
+              "text": "_id: sku_wool\nname: Wool sweater\nprice: 80"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 5,
+            "useful_documents": 0,
+            "irrelevant_documents": 5,
+            "retrieved_token_count": 54,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "wh_lookup",
+      "database": "mare_warehouse",
+      "title": "Warehouse lookup",
+      "question": "Where is bin_a3?",
+      "mare": {
+        "answer": "bin_a3 is at location code A3 (mare_warehouse.bins:bin_a3). No additional location details are provided in the evidence.",
+        "tokens": 4331,
+        "elapsed_ms": 10668.0,
+        "retrieved": [
+          {
+            "collection": "bins",
+            "document_id": "bin_a3",
+            "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+          },
+          {
+            "collection": "bins",
+            "document_id": "bin_b1",
+            "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 2,
+          "useful_documents": 1,
+          "irrelevant_documents": 1,
+          "retrieved_token_count": 12,
+          "useful_evidence_tokens": 6,
+          "context_efficiency": 0.5,
+          "required_evidence_count": 1,
+          "hit": [
+            "bins:bin_a3"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "bin_a3"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "bin_a3 is at location code A3. [bin_a3]",
+          "tokens": 345,
+          "elapsed_ms": 5334.6,
+          "retrieved": [
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 1,
+            "irrelevant_documents": 0,
+            "retrieved_token_count": 6,
+            "useful_evidence_tokens": 6,
+            "context_efficiency": 1.0,
+            "required_evidence_count": 1,
+            "hit": [
+              "bins:bin_a3"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "bin_a3"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "bin_a3 is the bin with code A3. [bins bin_a3]",
+          "tokens": 789,
+          "elapsed_ms": 6836.4,
+          "retrieved": [
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_b1",
+              "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_3",
+              "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_2",
+              "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_bolt",
+              "text": "_id: sku_bolt\nname: M8 bolt"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_nut",
+              "text": "_id: sku_nut\nname: Hex nut"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 7,
+            "useful_documents": 1,
+            "irrelevant_documents": 6,
+            "retrieved_token_count": 52,
+            "useful_evidence_tokens": 6,
+            "context_efficiency": 0.115,
+            "required_evidence_count": 1,
+            "hit": [
+              "bins:bin_a3"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "bin_a3"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "wh_count",
+      "database": "mare_warehouse",
+      "title": "Warehouse count",
+      "question": "How many movements of sku_bolt are recorded?",
+      "mare": {
+        "answer": "1 movement is recorded for sku_bolt (mare_warehouse.movements:mov_1).",
+        "tokens": 4684,
+        "elapsed_ms": 10599.2,
+        "retrieved": [
+          {
+            "collection": "movements",
+            "document_id": "mov_1",
+            "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15T00:00:00"
+          },
+          {
+            "collection": "movements",
+            "document_id": "mov_2",
+            "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01T00:00:00"
+          },
+          {
+            "collection": "movements",
+            "document_id": "mov_3",
+            "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02T00:00:00"
+          },
+          {
+            "collection": "skus",
+            "document_id": "sku_bolt",
+            "text": "_id: sku_bolt\nname: M8 bolt"
+          },
+          {
+            "collection": "skus",
+            "document_id": "sku_nut",
+            "text": "_id: sku_nut\nname: Hex nut"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 5,
+          "useful_documents": 1,
+          "irrelevant_documents": 4,
+          "retrieved_token_count": 40,
+          "useful_evidence_tokens": 10,
+          "context_efficiency": 0.25,
+          "required_evidence_count": 1,
+          "hit": [
+            "movements:mov_1"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "1"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "1 [mov_1]",
+          "tokens": 359,
+          "elapsed_ms": 4280.3,
+          "retrieved": [
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 1,
+            "irrelevant_documents": 0,
+            "retrieved_token_count": 10,
+            "useful_evidence_tokens": 10,
+            "context_efficiency": 1.0,
+            "required_evidence_count": 1,
+            "hit": [
+              "movements:mov_1"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "1"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "1 [movements mov_1]",
+          "tokens": 592,
+          "elapsed_ms": 3995.9,
+          "retrieved": [
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_bolt",
+              "text": "_id: sku_bolt\nname: M8 bolt"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_2",
+              "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_b1",
+              "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_3",
+              "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_nut",
+              "text": "_id: sku_nut\nname: Hex nut"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 7,
+            "useful_documents": 1,
+            "irrelevant_documents": 6,
+            "retrieved_token_count": 52,
+            "useful_evidence_tokens": 10,
+            "context_efficiency": 0.192,
+            "required_evidence_count": 1,
+            "hit": [
+              "movements:mov_1"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "1"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "wh_absence",
+      "database": "mare_warehouse",
+      "title": "Warehouse absence",
+      "question": "How many movements of sku_bolt happened in April 2024?",
+      "mare": {
+        "answer": "0. Based on the provided records, the only sku_bolt movement is in January 2024 (mare_warehouse.movements:mov_1), and the April record is for sku_nut, not sku_bolt (mare_warehouse.movements:mov_3).",
+        "tokens": 6488,
+        "elapsed_ms": 15007.0,
+        "retrieved": [
+          {
+            "collection": "movements",
+            "document_id": "mov_1",
+            "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15T00:00:00"
+          },
+          {
+            "collection": "movements",
+            "document_id": "mov_2",
+            "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01T00:00:00"
+          },
+          {
+            "collection": "movements",
+            "document_id": "mov_3",
+            "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02T00:00:00"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": null,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 3,
+          "useful_documents": 0,
+          "irrelevant_documents": 3,
+          "retrieved_token_count": 30,
+          "useful_evidence_tokens": 0,
+          "context_efficiency": 0.0,
+          "required_evidence_count": null,
+          "hit": []
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "0"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 5,
+        "tool_calls": 4,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "0 (source: mov_1)",
+          "tokens": 557,
+          "elapsed_ms": 5752.5,
+          "retrieved": [
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 10,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "0\n\nReason: The only sku_bolt movement shown is on 2024-01-15 (January) [mov_1]. The only April movement listed is for sku_nut, not sku_bolt [mov_3].",
+          "tokens": 1020,
+          "elapsed_ms": 7641.4,
+          "retrieved": [
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_2",
+              "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_bolt",
+              "text": "_id: sku_bolt\nname: M8 bolt"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_3",
+              "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_b1",
+              "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_nut",
+              "text": "_id: sku_nut\nname: Hex nut"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 7,
+            "useful_documents": 0,
+            "irrelevant_documents": 7,
+            "retrieved_token_count": 52,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "wh_hop",
+      "database": "mare_warehouse",
+      "title": "Warehouse hop",
+      "question": "Which sku is stored in bin_a3?",
+      "mare": {
+        "answer": "sku_bolt (mare_warehouse.bins:bin_a3)",
+        "tokens": 4617,
+        "elapsed_ms": 10747.1,
+        "retrieved": [
+          {
+            "collection": "bins",
+            "document_id": "bin_a3",
+            "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+          },
+          {
+            "collection": "bins",
+            "document_id": "bin_b1",
+            "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+          },
+          {
+            "collection": "skus",
+            "document_id": "sku_bolt",
+            "text": "_id: sku_bolt\nname: M8 bolt"
+          },
+          {
+            "collection": "skus",
+            "document_id": "sku_nut",
+            "text": "_id: sku_nut\nname: Hex nut"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 4,
+          "useful_documents": 1,
+          "irrelevant_documents": 3,
+          "retrieved_token_count": 22,
+          "useful_evidence_tokens": 5,
+          "context_efficiency": 0.227,
+          "required_evidence_count": 1,
+          "hit": [
+            "skus:sku_bolt"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "sku_bolt"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 4,
+        "tool_calls": 3,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "sku_bolt [bin_a3]",
+          "tokens": 405,
+          "elapsed_ms": 4871.1,
+          "retrieved": [
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "skus:sku_bolt"
+            ],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 6,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "sku_bolt"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "sku_bolt [bins bin_a3]",
+          "tokens": 592,
+          "elapsed_ms": 4037.8,
+          "retrieved": [
+            {
+              "collection": "bins",
+              "document_id": "bin_a3",
+              "text": "_id: bin_a3\ncode: A3\nsku: sku_bolt"
+            },
+            {
+              "collection": "bins",
+              "document_id": "bin_b1",
+              "text": "_id: bin_b1\ncode: B1\nsku: sku_nut"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_1",
+              "text": "_id: mov_1\nsku: sku_bolt\nbin_code: A3\nqty: 10\nmoved_at: 2024-01-15"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_2",
+              "text": "_id: mov_2\nsku: sku_nut\nbin_code: B1\nqty: 4\nmoved_at: 2024-06-01"
+            },
+            {
+              "collection": "movements",
+              "document_id": "mov_3",
+              "text": "_id: mov_3\nsku: sku_nut\nbin_code: B1\nqty: 1\nmoved_at: 2024-04-02"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_bolt",
+              "text": "_id: sku_bolt\nname: M8 bolt"
+            },
+            {
+              "collection": "skus",
+              "document_id": "sku_nut",
+              "text": "_id: sku_nut\nname: Hex nut"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 1.0,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 7,
+            "useful_documents": 1,
+            "irrelevant_documents": 6,
+            "retrieved_token_count": 52,
+            "useful_evidence_tokens": 5,
+            "context_efficiency": 0.096,
+            "required_evidence_count": 1,
+            "hit": [
+              "skus:sku_bolt"
+            ]
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "sku_bolt"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    }
+  ]
+}

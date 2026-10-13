@@ -1,0 +1,703 @@
+{
+  "generated": "2026-10-13T11:02:22.304817+00:00",
+  "agent_model": "gpt-5-mini",
+  "answer_model": "gpt-5",
+  "embedder": true,
+  "rag_ks": [
+    1,
+    8
+  ],
+  "suite": "utility",
+  "documents": 74,
+  "cases": [
+    {
+      "id": "util_bridge",
+      "database": "mare_utility",
+      "title": "Bridge carrier",
+      "question": "A sweater was returned because it pilled after one wash. Which carrier lane handled that order?",
+      "hidden": "northwind",
+      "mare": {
+        "answer": "northwind (mare_utility.orders:ord_pill; mare_utility.returns:ret_pill)",
+        "tokens": 8334,
+        "elapsed_ms": 23263.6,
+        "retrieved": [
+          {
+            "collection": "returns",
+            "document_id": "ret_pill",
+            "text": "_id: ret_pill\norder_id: ord_pill\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_00",
+            "text": "_id: ret_00\norder_id: ord_00\nreason: linen shirt faded after one wash\nrequested_at: 2024-03-02T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_01",
+            "text": "_id: ret_01\norder_id: ord_01\nreason: wool scarf faded after one wash\nrequested_at: 2024-03-03T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_02",
+            "text": "_id: ret_02\norder_id: ord_02\nreason: cotton hoodie faded after one wash\nrequested_at: 2024-03-04T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_03",
+            "text": "_id: ret_03\norder_id: ord_03\nreason: silk blouse faded after one wash\nrequested_at: 2024-03-05T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_04",
+            "text": "_id: ret_04\norder_id: ord_04\nreason: denim jacket faded after one wash\nrequested_at: 2024-03-06T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_05",
+            "text": "_id: ret_05\norder_id: ord_05\nreason: canvas tote faded after one wash\nrequested_at: 2024-03-07T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_06",
+            "text": "_id: ret_06\norder_id: ord_06\nreason: leather belt faded after one wash\nrequested_at: 2024-03-08T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_07",
+            "text": "_id: ret_07\norder_id: ord_07\nreason: nylon shorts faded after one wash\nrequested_at: 2024-03-09T00:00:00"
+          },
+          {
+            "collection": "returns",
+            "document_id": "ret_08",
+            "text": "_id: ret_08\norder_id: ord_08\nreason: fleece vest faded after one wash\nrequested_at: 2024-03-10T00:00:00"
+          },
+          {
+            "collection": "orders",
+            "document_id": "ord_pill",
+            "text": "_id: ord_pill\ncarrier_lane: northwind\nstatus: closed"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 11,
+          "useful_documents": 1,
+          "irrelevant_documents": 10,
+          "retrieved_token_count": 135,
+          "useful_evidence_tokens": 6,
+          "context_efficiency": 0.044,
+          "required_evidence_count": 1,
+          "hit": [
+            "orders:ord_pill"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "northwind"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 5,
+        "tool_calls": 4,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "The carrier lane is not specified in the provided data [ret_pill].",
+          "tokens": 438,
+          "elapsed_ms": 6578.3,
+          "retrieved": [
+            {
+              "collection": "returns",
+              "document_id": "ret_pill",
+              "text": "_id: ret_pill\norder_id: ord_pill\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "orders:ord_pill"
+            ],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 12,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": false,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "Cannot determine from provided chunks. The return for \u201csweater pilled after one wash\u201d is order ord_pill, but no carrier lane is listed [ret_pill].",
+          "tokens": 861,
+          "elapsed_ms": 7554.1,
+          "retrieved": [
+            {
+              "collection": "returns",
+              "document_id": "ret_pill",
+              "text": "_id: ret_pill\norder_id: ord_pill\nreason: sweater pilled after one wash\nrequested_at: 2024-03-18"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_01",
+              "text": "_id: ret_01\norder_id: ord_01\nreason: wool scarf faded after one wash\nrequested_at: 2024-03-03"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_02",
+              "text": "_id: ret_02\norder_id: ord_02\nreason: cotton hoodie faded after one wash\nrequested_at: 2024-03-04"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_03",
+              "text": "_id: ret_03\norder_id: ord_03\nreason: silk blouse faded after one wash\nrequested_at: 2024-03-05"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_08",
+              "text": "_id: ret_08\norder_id: ord_08\nreason: fleece vest faded after one wash\nrequested_at: 2024-03-10"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_00",
+              "text": "_id: ret_00\norder_id: ord_00\nreason: linen shirt faded after one wash\nrequested_at: 2024-03-02"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_04",
+              "text": "_id: ret_04\norder_id: ord_04\nreason: denim jacket faded after one wash\nrequested_at: 2024-03-06"
+            },
+            {
+              "collection": "returns",
+              "document_id": "ret_14",
+              "text": "_id: ret_14\norder_id: ord_14\nreason: tweed coat faded after one wash\nrequested_at: 2024-03-16"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "orders:ord_pill"
+            ],
+            "documents_retrieved": 8,
+            "useful_documents": 0,
+            "irrelevant_documents": 8,
+            "retrieved_token_count": 103,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": false,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [],
+            "forbidden_hits": [
+              "cannot"
+            ],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "util_distributed",
+      "database": "mare_utility",
+      "title": "Distributed assay",
+      "question": "A guest reported a bitter aftertaste in the house blend. What assay finding explains it?",
+      "hidden": "chlorogenic",
+      "mare": {
+        "answer": "Chlorogenic acid measured above the roast ceiling in lot_77, which can cause bitterness (mare_utility.assays:lot_77; mare_utility.notes:note_house).",
+        "tokens": 8218,
+        "elapsed_ms": 14452.9,
+        "retrieved": [
+          {
+            "collection": "notes",
+            "document_id": "note_house",
+            "text": "_id: note_house\nlot_id: lot_77\nnote: guest reported a bitter aftertaste in the house blend"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_00",
+            "text": "_id: note_00\nlot_id: lot_00\nnote: guest reported a bitter aftertaste in the dark roast"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_01",
+            "text": "_id: note_01\nlot_id: lot_01\nnote: guest reported a bitter aftertaste in the cold brew"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_02",
+            "text": "_id: note_02\nlot_id: lot_02\nnote: guest reported a bitter aftertaste in the espresso shot"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_03",
+            "text": "_id: note_03\nlot_id: lot_03\nnote: guest reported a bitter aftertaste in the chai latte"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_04",
+            "text": "_id: note_04\nlot_id: lot_04\nnote: guest reported a bitter aftertaste in the green tea"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_05",
+            "text": "_id: note_05\nlot_id: lot_05\nnote: guest reported a bitter aftertaste in the cocoa"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_06",
+            "text": "_id: note_06\nlot_id: lot_06\nnote: guest reported a bitter aftertaste in the barley tea"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_07",
+            "text": "_id: note_07\nlot_id: lot_07\nnote: guest reported a bitter aftertaste in the lemon water"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_08",
+            "text": "_id: note_08\nlot_id: lot_08\nnote: guest reported a bitter aftertaste in the oat latte"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_09",
+            "text": "_id: note_09\nlot_id: lot_09\nnote: guest reported a bitter aftertaste in the mint tea"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_10",
+            "text": "_id: note_10\nlot_id: lot_10\nnote: guest reported a bitter aftertaste in the rye coffee"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_11",
+            "text": "_id: note_11\nlot_id: lot_11\nnote: guest reported a bitter aftertaste in the decaf drip"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_12",
+            "text": "_id: note_12\nlot_id: lot_12\nnote: guest reported a bitter aftertaste in the mocha"
+          },
+          {
+            "collection": "notes",
+            "document_id": "note_13",
+            "text": "_id: note_13\nlot_id: lot_13\nnote: guest reported a bitter aftertaste in the black tea"
+          },
+          {
+            "collection": "assays",
+            "document_id": "lot_77",
+            "text": "_id: lot_77\nsummary: chlorogenic acid above the roast ceiling"
+          },
+          {
+            "collection": "assays",
+            "document_id": "lot_00",
+            "text": "_id: lot_00\nsummary: batch 00 within the usual acidity band"
+          },
+          {
+            "collection": "assays",
+            "document_id": "lot_01",
+            "text": "_id: lot_01\nsummary: batch 01 within the usual acidity band"
+          },
+          {
+            "collection": "assays",
+            "document_id": "lot_02",
+            "text": "_id: lot_02\nsummary: batch 02 within the usual acidity band"
+          },
+          {
+            "collection": "assays",
+            "document_id": "lot_03",
+            "text": "_id: lot_03\nsummary: batch 03 within the usual acidity band"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": 1.0,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 20,
+          "useful_documents": 1,
+          "irrelevant_documents": 19,
+          "retrieved_token_count": 257,
+          "useful_evidence_tokens": 9,
+          "context_efficiency": 0.035,
+          "required_evidence_count": 1,
+          "hit": [
+            "assays:lot_77"
+          ]
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "chlorogenic"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 5,
+        "tool_calls": 4,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "None provided \u2014 the note only reports a bitter aftertaste; no assay results are given to explain it [note_house].",
+          "tokens": 565,
+          "elapsed_ms": 7145.2,
+          "retrieved": [
+            {
+              "collection": "notes",
+              "document_id": "note_house",
+              "text": "_id: note_house\nlot_id: lot_77\nnote: guest reported a bitter aftertaste in the house blend"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "assays:lot_77"
+            ],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 14,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": false,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "No assay finding is provided in the given data\u2014only the guest\u2019s report of a bitter aftertaste in the house blend is recorded [note_house].",
+          "tokens": 858,
+          "elapsed_ms": 7066.6,
+          "retrieved": [
+            {
+              "collection": "notes",
+              "document_id": "note_house",
+              "text": "_id: note_house\nlot_id: lot_77\nnote: guest reported a bitter aftertaste in the house blend"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_00",
+              "text": "_id: note_00\nlot_id: lot_00\nnote: guest reported a bitter aftertaste in the dark roast"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_06",
+              "text": "_id: note_06\nlot_id: lot_06\nnote: guest reported a bitter aftertaste in the barley tea"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_05",
+              "text": "_id: note_05\nlot_id: lot_05\nnote: guest reported a bitter aftertaste in the cocoa"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_01",
+              "text": "_id: note_01\nlot_id: lot_01\nnote: guest reported a bitter aftertaste in the cold brew"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_04",
+              "text": "_id: note_04\nlot_id: lot_04\nnote: guest reported a bitter aftertaste in the green tea"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_02",
+              "text": "_id: note_02\nlot_id: lot_02\nnote: guest reported a bitter aftertaste in the espresso shot"
+            },
+            {
+              "collection": "notes",
+              "document_id": "note_03",
+              "text": "_id: note_03\nlot_id: lot_03\nnote: guest reported a bitter aftertaste in the chai latte"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": 0.0,
+            "critical_evidence_missing": [
+              "assays:lot_77"
+            ],
+            "documents_retrieved": 8,
+            "useful_documents": 0,
+            "irrelevant_documents": 8,
+            "retrieved_token_count": 111,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": 1,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": false,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "util_absence",
+      "database": "mare_utility",
+      "title": "Absence sku_plain",
+      "question": "How many refunds for sku_plain were requested in April 2024?",
+      "hidden": "",
+      "mare": {
+        "answer": "0\n\nBased on the provided April 2024 refund records, none list sku_plain as the sku (entries are for other skus, including a sku_plain_plus on 2024-04-12): mare_utility.refunds:ref_00, mare_utility.refunds:ref_01, mare_utility.refunds:ref_02, mare_utility.refunds:ref_03, mare_utility.refunds:ref_04, mare_utility.refunds:ref_05, mare_utility.refunds:ref_06, mare_utility.refunds:ref_07, mare_utility.refunds:ref_look. If there are additional records not provided here, they are not reflected in this count.",
+        "tokens": 8415,
+        "elapsed_ms": 24483.4,
+        "retrieved": [
+          {
+            "collection": "refunds",
+            "document_id": "ref_look",
+            "text": "_id: ref_look\nsku: sku_plain_plus\nreason: replacement for sku_plain style mug\nrequested_at: 2024-04-12T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_jan",
+            "text": "_id: ref_jan\nsku: sku_linen\nreason: hem came loose before spring\nrequested_at: 2024-01-09T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_00",
+            "text": "_id: ref_00\nsku: sku_linen\nreason: sku_linen seam split in transit\nrequested_at: 2024-04-03T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_01",
+            "text": "_id: ref_01\nsku: sku_oak\nreason: sku_oak seam split in transit\nrequested_at: 2024-04-04T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_02",
+            "text": "_id: ref_02\nsku: sku_cedar\nreason: sku_cedar seam split in transit\nrequested_at: 2024-04-05T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_03",
+            "text": "_id: ref_03\nsku: sku_flint\nreason: sku_flint seam split in transit\nrequested_at: 2024-04-06T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_04",
+            "text": "_id: ref_04\nsku: sku_maple\nreason: sku_maple seam split in transit\nrequested_at: 2024-04-07T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_05",
+            "text": "_id: ref_05\nsku: sku_birch\nreason: sku_birch seam split in transit\nrequested_at: 2024-04-08T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_06",
+            "text": "_id: ref_06\nsku: sku_slate\nreason: sku_slate seam split in transit\nrequested_at: 2024-04-09T00:00:00"
+          },
+          {
+            "collection": "refunds",
+            "document_id": "ref_07",
+            "text": "_id: ref_07\nsku: sku_ivory\nreason: sku_ivory seam split in transit\nrequested_at: 2024-04-10T00:00:00"
+          }
+        ],
+        "retrieval": {
+          "gold_evidence_recall": null,
+          "critical_evidence_missing": [],
+          "documents_retrieved": 10,
+          "useful_documents": 0,
+          "irrelevant_documents": 10,
+          "retrieved_token_count": 120,
+          "useful_evidence_tokens": 0,
+          "context_efficiency": 0.0,
+          "required_evidence_count": null,
+          "hit": []
+        },
+        "answer_score": {
+          "correct": true,
+          "completeness": true,
+          "matched_all": [],
+          "matched_any": [
+            "0",
+            "none"
+          ],
+          "forbidden_hits": [],
+          "foreign_incident_cites": [],
+          "group_hits": [],
+          "entity_found": null,
+          "cause_found": null,
+          "groups_hit": 0,
+          "groups_total": 0
+        },
+        "agent_turns": 5,
+        "tool_calls": 4,
+        "stop_reason": "completed"
+      },
+      "rag": {
+        "k1": {
+          "answer": "0 [ref_00]",
+          "tokens": 745,
+          "elapsed_ms": 10087.0,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_00",
+              "text": "_id: ref_00\nsku: sku_linen\nreason: sku_linen seam split in transit\nrequested_at: 2024-04-03"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 1,
+            "useful_documents": 0,
+            "irrelevant_documents": 1,
+            "retrieved_token_count": 12,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        },
+        "k8": {
+          "answer": "0 [ref_00; ref_look; ref_07; ref_05; ref_03; ref_04; ref_01; ref_02]",
+          "tokens": 798,
+          "elapsed_ms": 6655.4,
+          "retrieved": [
+            {
+              "collection": "refunds",
+              "document_id": "ref_00",
+              "text": "_id: ref_00\nsku: sku_linen\nreason: sku_linen seam split in transit\nrequested_at: 2024-04-03"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_look",
+              "text": "_id: ref_look\nsku: sku_plain_plus\nreason: replacement for sku_plain style mug\nrequested_at: 2024-04-12"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_07",
+              "text": "_id: ref_07\nsku: sku_ivory\nreason: sku_ivory seam split in transit\nrequested_at: 2024-04-10"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_05",
+              "text": "_id: ref_05\nsku: sku_birch\nreason: sku_birch seam split in transit\nrequested_at: 2024-04-08"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_03",
+              "text": "_id: ref_03\nsku: sku_flint\nreason: sku_flint seam split in transit\nrequested_at: 2024-04-06"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_04",
+              "text": "_id: ref_04\nsku: sku_maple\nreason: sku_maple seam split in transit\nrequested_at: 2024-04-07"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_01",
+              "text": "_id: ref_01\nsku: sku_oak\nreason: sku_oak seam split in transit\nrequested_at: 2024-04-04"
+            },
+            {
+              "collection": "refunds",
+              "document_id": "ref_02",
+              "text": "_id: ref_02\nsku: sku_cedar\nreason: sku_cedar seam split in transit\nrequested_at: 2024-04-05"
+            }
+          ],
+          "retrieval": {
+            "gold_evidence_recall": null,
+            "critical_evidence_missing": [],
+            "documents_retrieved": 8,
+            "useful_documents": 0,
+            "irrelevant_documents": 8,
+            "retrieved_token_count": 96,
+            "useful_evidence_tokens": 0,
+            "context_efficiency": 0.0,
+            "required_evidence_count": null,
+            "hit": []
+          },
+          "answer_score": {
+            "correct": true,
+            "completeness": true,
+            "matched_all": [],
+            "matched_any": [
+              "0"
+            ],
+            "forbidden_hits": [],
+            "foreign_incident_cites": [],
+            "group_hits": [],
+            "entity_found": null,
+            "cause_found": null,
+            "groups_hit": 0,
+            "groups_total": 0
+          }
+        }
+      }
+    }
+  ]
+}

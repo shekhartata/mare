@@ -154,7 +154,19 @@ def read_documents(
 @mcp.tool()
 def ask(question: str) -> dict[str, Any]:
     """Run the agent retrieval loop and return a grounded answer with Mongo citations."""
-    session = run_agent(question, tenant_id=_tenant())
+    if get_settings().generic_index:
+        from app.indexing.signals.store import load_generic_handlers
+        from app.llm import get_embedding_model
+        from app.mongo.client import get_client
+
+        session = run_agent(
+            question,
+            handlers=load_generic_handlers(get_client(), get_embedding_model()),
+            persist=False,
+            schema_in_prompt=False,
+        )
+    else:
+        session = run_agent(question, tenant_id=_tenant())
     return {
         "session_id": session.id,
         "answer": session.answer,
