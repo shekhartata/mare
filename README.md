@@ -28,7 +28,7 @@ Index the database once. Cards and hops are written to `_agent_retrieval` on tha
 uvicorn app.main:app --port 8080
 ```
 
-Open `http://localhost:8080`. Paste the connection string, choose the database, and index. Asking on the page is optional. Closing it leaves the cards on the cluster.
+Open `http://localhost:8080`. Paste the connection string, choose the database, and index. Asking on the page is optional. Closing it leaves the cards on the cluster. Indexing also saves one vector per navigation card, so a later question embeds the question and not the cards. An index saved before that needs `python scripts/index_generic.py --upgrade-vectors`. If the embedding model does not match those vectors, search stays lexical and the response says so.
 
 The same index from the command line:
 

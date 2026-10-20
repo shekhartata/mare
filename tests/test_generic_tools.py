@@ -3,7 +3,8 @@
 from app.datagen.shop_fixture import documents as shop_documents
 from app.datagen.warehouse_fixture import documents as warehouse_documents
 from app.indexing.signals import build_generic_index, reset_index_state
-from app.retrieval.generic_tools import generic_handlers
+from app.indexing.signals.nav_nodes import build_nav_nodes
+from app.retrieval.generic_tools import GenericSurface, generic_handlers
 
 
 def setup_function() -> None:
@@ -58,6 +59,34 @@ def test_shop_search_retrieve_and_filtered_query():
         limit=5,
     )
     assert "error" in blocked
+
+
+def test_query_embed_failure_keeps_lexical_hits():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+
+    class Boom:
+        dimensions = 3
+        model = "boom"
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            raise RuntimeError("embedding down")
+
+    nodes = build_nav_nodes(index)
+    surface = GenericSurface(
+        index,
+        vectors={node["_id"]: [1.0, 0.0, 0.0] for node in nodes},
+        query_embedder=Boom(),
+    )
+    hits = surface.search_information(
+        "sweater pilled after one wash",
+        tenant_id=None,
+        scope=None,
+        mode=None,
+        limit=4,
+    )
+    assert hits["results"]
+    assert surface.embed_calls["queries"] == 0
+    assert "error" not in hits
 
 
 def test_warehouse_absence_filter_returns_no_documents():

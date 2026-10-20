@@ -108,6 +108,72 @@ def _run(script, **kwargs):
     return session, client
 
 
+def test_empty_submit_is_bounced_once_and_skips_the_stand_in():
+    class Counter(HeuristicReasoningModel):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(self, prompt, *, system=None):
+            self.calls += 1
+            return super().generate(prompt, system=system)
+
+    reasoner = Counter()
+    draft = dict(SUBMIT)
+    draft["answer"] = "I cannot tell the loan purpose yet."
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "loan purpose"})]),
+            _response([_tool_call("c2", "submit_answer", draft)]),
+            _response([_tool_call("c3", "submit_answer", draft)]),
+        ],
+        answer_model="gpt-5",
+        answer_reasoner=reasoner,
+    )
+    bounced = json.loads(
+        next(m["content"] for m in client.calls[2]["messages"] if m.get("tool_call_id") == "c2")
+    )
+    assert "No documents have been read yet" in bounced["error"]
+    assert "nav:group:cust_007" in bounced["error"]
+    assert session.answer == draft["answer"]
+    assert session.retrieval_count == 0
+    assert reasoner.calls == 0
+    assert all(ref.document_id != "draft" for ref in session.citations)
+    assert "mare_demo.unknown" not in session.answer
+    assert client._script == []
+
+
+def test_zero_row_query_may_submit():
+    session, client = _run(
+        [
+            _response(
+                [
+                    _tool_call(
+                        "c1",
+                        "query_documents",
+                        {"namespace": "mare_demo.incidents", "filter": {"customer_id": "cust_004"}},
+                    )
+                ]
+            ),
+            _response([_tool_call("c2", "submit_answer", SUBMIT)]),
+        ]
+    )
+    assert session.stop_reason == "completed"
+    assert session.retrieval_count == 1
+    assert session.retrieved_docs == []
+    assert session.answer.startswith("SSO failed")
+    assert len(client.calls) == 2
+
+
+def test_forced_submit_without_a_read_is_not_bounced():
+    session, client = _run(
+        [_response([_tool_call("c1", "submit_answer", SUBMIT)])],
+        max_turns=0,
+    )
+    assert session.stop_reason == "max_agent_turns"
+    assert session.answer.startswith("SSO failed")
+    assert len(client.calls) == 1
+
+
 def test_loop_search_retrieve_submit():
     session, client = _run(
         [

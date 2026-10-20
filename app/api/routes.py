@@ -38,13 +38,8 @@ def ask(body: AskRequest) -> AskResponse:
         session = run_adaptive(body.question, tenant_id=tenant)
         return _to_response(session, engine="legacy")
     if get_settings().generic_index:
-        session = run_agent(
-            body.question,
-            handlers=_saved_generic_handlers(),
-            persist=False,
-            schema_in_prompt=False,
-        )
-        return _to_response(session, engine="generic")
+        session, timing = _saved_generic_ask(body.question)
+        return _to_response(session, engine="generic", timing=timing)
     session = run_agent(body.question, tenant_id=tenant)
     return _to_response(session, engine="adaptive")
 
@@ -98,18 +93,20 @@ def metrics_vectors() -> dict:
     return vector_counts()
 
 
-def _saved_generic_handlers() -> dict:
-    from app.indexing.signals.store import MissingGenericIndex, load_generic_handlers
+def _saved_generic_ask(question: str):
+    from app.indexing.signals.store import MissingGenericIndex, SemanticIndexError
     from app.llm import get_embedding_model
     from app.mongo.client import get_client
+    from app.retrieval.generic_ask import run_saved_generic
 
     try:
-        return load_generic_handlers(get_client(), get_embedding_model())
-    except MissingGenericIndex as exc:
+        return run_saved_generic(get_client(), question, get_embedding_model())
+    except (MissingGenericIndex, SemanticIndexError) as exc:
         raise HTTPException(409, str(exc)) from exc
 
 
-def _to_response(session, engine: str) -> AskResponse:
+def _to_response(session, engine: str, timing: dict | None = None) -> AskResponse:
+    timing = timing or {}
     return AskResponse(
         session_id=session.id,
         question=session.question,
@@ -130,4 +127,7 @@ def _to_response(session, engine: str) -> AskResponse:
         if session.router_recommendation
         else None,
         engine=engine,
+        request_ms=timing.get("request_ms"),
+        load_ms=timing.get("load_ms"),
+        index_status=timing.get("index_status"),
     )

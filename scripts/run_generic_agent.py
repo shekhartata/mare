@@ -23,7 +23,7 @@ from app.eval.scoring import answer_scores, retrieval_metrics
 from app.indexing.signals import build_generic_index, reset_index_state
 from app.llm import get_embedding_model, get_reasoning_model
 from app.retrieval.agent_loop import run_agent
-from app.retrieval.generic_tools import generic_handlers
+from app.retrieval.generic_tools import generic_handlers_with_vectors
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "reports" / "generic_agent.md"
@@ -51,13 +51,16 @@ def main() -> int:
         name: build_generic_index(docs, database=name, use_cache=False)
         for name, docs in corpora.items()
     }
+    ready = {
+        name: generic_handlers_with_vectors(index, embedder) for name, index in indexes.items()
+    }
     rags = {name: MemoryRag(docs, embedder) for name, docs in corpora.items()}
     print(f"agent: {settings.openai_model_agent} answer: {settings.openai_model}", flush=True)
     cases = []
     for case in spec_cases:
         database = case["database"]
         print(f"{case['id']}: {case['question'][:72]}", flush=True)
-        mare = _run_mare(case, indexes[database], embedder)
+        mare = _run_mare(case, ready[database])
         rag = {
             f"k{k}": _run_rag(
                 case, rags[database], answer_model, k=k, rrf_k=settings.rrf_k
@@ -93,10 +96,10 @@ def main() -> int:
     return 0
 
 
-def _run_mare(case: dict, index: Any, embedder: Any) -> dict:
+def _run_mare(case: dict, handlers: Any) -> dict:
     session = run_agent(
         case["question"],
-        handlers=generic_handlers(index, embedder),
+        handlers=handlers,
         persist=False,
         schema_in_prompt=False,
         compact_context=True,

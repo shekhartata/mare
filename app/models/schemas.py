@@ -205,6 +205,7 @@ class EvidenceSession(BaseModel):
     retrieved_docs: list[dict[str, Any]] = Field(default_factory=list)
     hypothesis_versions: list[str] = Field(default_factory=list)
     acgc_stats: dict[str, Any] = Field(default_factory=dict)
+    tool_stats: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -235,6 +236,9 @@ class AskResponse(BaseModel):
     mongo_latency_ms: float = 0
     router_recommendation: str | None = None
     engine: str = "adaptive"
+    request_ms: float | None = None
+    load_ms: float | None = None
+    index_status: dict[str, Any] | None = None
 
 
 class GoldSource(BaseModel):
