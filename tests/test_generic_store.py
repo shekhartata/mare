@@ -16,6 +16,7 @@ from app.indexing.signals.store import (
     load_generic_index,
     read_source,
     save_generic_index,
+    saved_index_summary,
 )
 
 
@@ -30,32 +31,60 @@ class _Cursor:
         return iter(self.docs)
 
 
+def _doc_matches(doc: dict, query: dict | None) -> bool:
+    if not query:
+        return True
+    if "$and" in query:
+        return all(_doc_matches(doc, part) for part in query["$and"] if isinstance(part, dict))
+    if "$or" in query:
+        return any(_doc_matches(doc, part) for part in query["$or"] if isinstance(part, dict))
+    for key, expected in query.items():
+        if str(key).startswith("$"):
+            continue
+        if isinstance(expected, dict):
+            if "$ne" in expected and doc.get(key) == expected["$ne"]:
+                return False
+            if "$in" in expected and not any(
+                doc.get(key) == item or str(doc.get(key)) == str(item) for item in expected["$in"]
+            ):
+                return False
+            if "$eq" in expected and str(doc.get(key)) != str(expected["$eq"]):
+                return False
+            continue
+        if doc.get(key) != expected and str(doc.get(key)) != str(expected):
+            return False
+    return True
+
+
 class _Collection:
     def __init__(self, docs: list[dict] | None = None) -> None:
         self.docs = list(docs or [])
 
     def find(self, query: dict | None = None) -> _Cursor:
-        del query
-        return _Cursor(self.docs)
+        return _Cursor([doc for doc in self.docs if _doc_matches(doc, query)])
 
     def find_one(self, query: dict) -> dict | None:
-        del query
-        return self.docs[0] if self.docs else None
+        for doc in self.docs:
+            if _doc_matches(doc, query):
+                return doc
+        return None
 
     def replace_one(self, query: dict, doc: dict, upsert: bool = False) -> None:
-        del query, upsert
-        self.docs = [doc]
+        for index, existing in enumerate(self.docs):
+            if _doc_matches(existing, query):
+                self.docs[index] = doc
+                return
+        if upsert:
+            self.docs.append(doc)
 
     def delete_many(self, query: dict) -> None:
-        del query
-        self.docs = []
+        self.docs = [doc for doc in self.docs if not _doc_matches(doc, query)]
 
     def insert_many(self, rows: list[dict]) -> None:
         self.docs.extend(rows)
 
     def count_documents(self, query: dict) -> int:
-        del query
-        return len(self.docs)
+        return sum(1 for doc in self.docs if _doc_matches(doc, query))
 
 
 class _Database:
@@ -176,8 +205,44 @@ def test_connect_page_offers_index_and_ask():
     from app.api.generic_ui import PAGE
 
     assert "Connection string" in PAGE
+    assert "already indexed" in PAGE
     assert "/ui/index" in PAGE
     assert "/ui/ask" in PAGE
+
+
+def test_saved_summary_reports_an_existing_database_without_rereading_it():
+    docs = shop_documents()
+    client = _Client()
+    for name, rows in docs.items():
+        client["mare_shop"][name].docs = list(rows)
+    index_database(client, "mare_shop")
+    client["mare_shop"]["orders"].docs.clear()
+    summary = saved_index_summary(client)
+    assert summary is not None
+    assert summary["already"] is True
+    assert summary["database"] == "mare_shop"
+    assert summary["cards"] >= 1
+    assert saved_index_summary(_Client()) is None
+
+
+def test_ui_index_returns_the_saved_catalog(monkeypatch):
+    from app.api.generic_ui import IndexBody, build_index
+
+    docs = shop_documents()
+    client = _Client()
+    for name, rows in docs.items():
+        client["mare_shop"][name].docs = list(rows)
+    index_database(client, "mare_shop")
+    client.close = lambda: None
+
+    def fail_rebuild(*_args, **_kwargs):
+        raise AssertionError("index should not rebuild")
+
+    monkeypatch.setattr("app.api.generic_ui._open", lambda _uri: client)
+    monkeypatch.setattr("app.api.generic_ui.index_database", fail_rebuild)
+    summary = build_index(IndexBody(uri="mongodb://example", database="mare_shop"))
+    assert summary["already"] is True
+    assert summary["database"] == "mare_shop"
 
 
 def test_missing_catalog_raises():

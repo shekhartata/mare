@@ -33,10 +33,13 @@ from app.observability.traces import write_trace
 from app.retrieval.context_compact import compact_messages, estimate_tokens, receipt_payload
 from app.retrieval.evidence import generate_answer
 from app.retrieval.loop import run_adaptive
+from app.retrieval.tool_policy import Ledger, absorb
+from app.retrieval.tool_scheduler import plan_calls, run_bounded, segments, summarize
 from app.retrieval.tools import TOOL_DEFINITIONS, default_handlers, dispatch_tool
 from app.search.router import recommend_method
 
 SUBMIT_TOOL = "submit_answer"
+_READ_TOOLS = frozenset({"retrieve_evidence", "query_documents", "find", "count"})
 FORCE_SUBMIT = (
     "You have reached the retrieval budget. Call submit_answer now using only "
     "evidence already retrieved. Do not call any other tool. If evidence is "
@@ -111,6 +114,7 @@ def run_agent(
     compact_context: bool | None = None,
     acgc_client: Any | None = None,
     tool_surface: str | None = None,
+    parallel_tools: str | None = None,
 ) -> EvidenceSession:
     """Run the tool loop. Receipts compact by default; ACGC sidecar only if use_acgc / MARE_ACGC."""
     settings = get_settings()
@@ -196,6 +200,7 @@ def run_agent(
             compact_on=compact_on,
             token_budget=settings.acgc_token_budget,
             tool_defs=tool_defs,
+            parallel_tools=parallel_tools,
         )
     finally:
         if sidecar is not None:
@@ -226,16 +231,25 @@ def _tool_loop(
     compact_on: bool,
     token_budget: int,
     tool_defs: list[dict[str, Any]],
+    parallel_tools: str | None = None,
 ) -> EvidenceSession:
     settings = get_settings()
     gathered: list[RetrievedDocument] = []
     submitted: dict[str, Any] | None = None
+    ledger = Ledger()
+    reads = [0]
+    gate = {"pending": False, "bounced": False}
+    mode = _parallel_mode(parallel_tools, settings.parallel_tools)
+    session.tool_stats = {"mode": mode, "turns": []}
     forced = False
     step = 0
     status = SessionStatus.complete
     stop_reason = "completed"
 
     while True:
+        if gate["pending"]:
+            gate["bounced"] = True
+            gate["pending"] = False
         elapsed_ms = (time.perf_counter() - started) * 1000
         over_budget = session.agent_turns >= max_turns or elapsed_ms >= settings.max_elapsed_ms
         if over_budget and submitted is None:
@@ -310,6 +324,10 @@ def _tool_loop(
         if not tool_calls:
             text = (assistant_dict.get("content") or "").strip()
             if text:
+                block = None if forced else _submit_block(ledger, reads, gate)
+                if block:
+                    messages.append({"role": "user", "content": block})
+                    continue
                 submitted = submitted or {
                     "answer": text,
                     "hypothesis": "",
@@ -360,54 +378,86 @@ def _tool_loop(
                 )
             break
 
-        turn_submit: dict[str, Any] | None = None
-        for tc in tool_calls:
-            session.tool_calls += 1
-            name = (tc.get("function") or {}).get("name") or ""
-            args = _parse_arguments((tc.get("function") or {}).get("arguments"))
-            if name == SUBMIT_TOOL:
-                turn_submit = args
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.get("id"),
-                        "content": json.dumps({"ok": True}),
-                    }
-                )
-                step = _trace(session_id, step, SUBMIT_TOOL, persist, reason="agent_decided")
-                continue
-            t_mongo = time.perf_counter()
-            try:
-                result = dispatch_tool(name, args, tenant_id=tenant_id, handlers=handlers)
-            except Exception as exc:
-                result = {"error": str(exc)}
-            mongo_ms = (time.perf_counter() - t_mongo) * 1000
-            session.mongo_latency_ms += mongo_ms
-            if name in {"retrieve_evidence", "query_documents", "find", "count"}:
-                session.retrieval_count += 1
-            gathered.extend(_docs_from_tool_result(result))
-            payload = json.dumps(result, default=str)
-            if len(payload) > 24_000:
-                payload = payload[:24_000] + "…(truncated)"
-            messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": payload})
-            if sidecar is not None:
-                sidecar.capture(
-                    "tool_result",
-                    receipt_payload(result),
-                    {"tool": name},
-                )
-                sidecar.trigger_gc()
-            step = _trace(
-                session_id,
-                step,
-                name or "tool",
-                persist,
-                query=str(args.get("query") or args.get("namespace") or ""),
-                scope=str(args.get("scope") or ""),
-                results=_brief_tool_result(result),
-                latency_ms=mongo_ms,
-                extra={"args_keys": sorted(args.keys())},
+        if mode == "on":
+            turn_submit, step = _run_parallel_turn(
+                tool_calls=tool_calls,
+                handlers=handlers,
+                ledger=ledger,
+                session=session,
+                session_id=session_id,
+                messages=messages,
+                gathered=gathered,
+                tenant_id=tenant_id,
+                persist=persist,
+                step=step,
+                sidecar=sidecar,
+                started=started,
+                cap=max(1, int(settings.parallel_tools_cap)),
+                reads=reads,
+                gate=gate,
             )
+        else:
+            if mode == "shadow":
+                planned = plan_calls(
+                    tool_calls,
+                    handlers,
+                    ledger,
+                    cap=max(1, int(settings.parallel_tools_cap)),
+                )
+                _append_tool_stats(
+                    session,
+                    summarize(
+                        planned,
+                        executed_parallel=False,
+                        max_concurrency=1,
+                        batch_wall_ms=None,
+                        sum_call_ms=None,
+                    ),
+                )
+            turn_submit = None
+            for tc in tool_calls:
+                session.tool_calls += 1
+                name = (tc.get("function") or {}).get("name") or ""
+                args = _parse_arguments((tc.get("function") or {}).get("arguments"))
+                if name == SUBMIT_TOOL:
+                    block = _submit_block(ledger, reads, gate)
+                    if block:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc.get("id"),
+                                "content": json.dumps({"error": block}),
+                            }
+                        )
+                        step = _trace(session_id, step, SUBMIT_TOOL, persist, reason="unread")
+                        continue
+                    turn_submit = args
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.get("id"),
+                            "content": json.dumps({"ok": True}),
+                        }
+                    )
+                    step = _trace(session_id, step, SUBMIT_TOOL, persist, reason="agent_decided")
+                    continue
+                step, _mongo_ms = _execute_and_record(
+                    name=name,
+                    args=args,
+                    call_id=str(tc.get("id") or ""),
+                    result=None,
+                    handlers=handlers,
+                    ledger=ledger,
+                    session=session,
+                    session_id=session_id,
+                    messages=messages,
+                    gathered=gathered,
+                    tenant_id=tenant_id,
+                    persist=persist,
+                    step=step,
+                    sidecar=sidecar,
+                    reads=reads,
+                )
         if turn_submit is not None:
             submitted = turn_submit
             status = SessionStatus.complete
@@ -433,7 +483,7 @@ def _tool_loop(
 
     answer = str(draft.get("answer") or "").strip()
     citations = _citations_from_docs(gathered)
-    needs_synthesis = agent_model != answer_model and bool(gathered or answer)
+    needs_synthesis = agent_model != answer_model and bool(gathered)
     reasoner = answer_reasoner
     if needs_synthesis and reasoner is None and settings.openai_api_key:
         reasoner = OpenAIReasoningModel(
@@ -441,14 +491,7 @@ def _tool_loop(
         )
     if needs_synthesis and reasoner is not None:
         t_syn = time.perf_counter()
-        synth_docs = gathered or [
-            RetrievedDocument(
-                ref=MongoRef(database=RAW_DB, collection="unknown", document_id="draft"),
-                content={},
-                text=answer,
-            )
-        ]
-        answer, synth_cites, tokens = generate_answer(reasoner, session, synth_docs)
+        answer, synth_cites, tokens = generate_answer(reasoner, session, gathered)
         session.llm_latency_ms += (time.perf_counter() - t_syn) * 1000
         session.tokens_consumed += tokens
         session.agent_turns += 1
@@ -554,6 +597,246 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _parallel_mode(override: str | None, configured: str) -> str:
+    mode = (override if override is not None else configured or "off").strip().lower()
+    return mode if mode in {"off", "shadow", "on"} else "off"
+
+
+def _append_tool_stats(session: EvidenceSession, summary: dict[str, Any]) -> None:
+    stats = dict(session.tool_stats or {})
+    turns = list(stats.get("turns") or [])
+    turns.append(summary)
+    stats["turns"] = turns
+    session.tool_stats = stats
+
+
+def _submit_block(ledger: Ledger, reads: list[int], gate: dict[str, bool]) -> str | None:
+    """Ask for a document read once. The next submit is accepted."""
+    if reads[0] or gate["bounced"]:
+        return None
+    gate["pending"] = True
+    ids = sorted(ledger.node_ids)
+    if ids:
+        shown = ", ".join(ids[:8])
+        return (
+            "No documents have been read yet. Call retrieve_evidence on a node_id "
+            f"already returned by search ({shown}), or query_documents on a namespace "
+            "you already saw, before submit_answer."
+        )
+    return (
+        "No documents have been read yet. Search, then retrieve_evidence or "
+        "query_documents, before submit_answer."
+    )
+
+
+def _execute_and_record(
+    *,
+    name: str,
+    args: dict[str, Any],
+    call_id: str,
+    result: dict[str, Any] | None,
+    handlers: dict[str, Any],
+    ledger: Ledger,
+    session: EvidenceSession,
+    session_id: str,
+    messages: list[dict[str, Any]],
+    gathered: list[RetrievedDocument],
+    tenant_id: str,
+    persist: bool,
+    step: int,
+    sidecar: Any | None,
+    mongo_ms: float | None = None,
+    reads: list[int] | None = None,
+    count_read: bool | None = None,
+) -> tuple[int, float]:
+    dispatched = result is None
+    if result is None:
+        started = time.perf_counter()
+        try:
+            result = dispatch_tool(name, args, tenant_id=tenant_id, handlers=handlers)
+        except Exception as exc:
+            result = {"error": str(exc)}
+        mongo_ms = (time.perf_counter() - started) * 1000
+    else:
+        mongo_ms = float(mongo_ms or 0)
+    if not isinstance(result, dict):
+        result = {"error": "tool returned an unexpected result"}
+    if name in _READ_TOOLS and (dispatched if count_read is None else count_read):
+        if reads is not None:
+            reads[0] += 1
+    session.mongo_latency_ms += mongo_ms
+    if name in {"retrieve_evidence", "query_documents", "find", "count"}:
+        session.retrieval_count += 1
+    gathered.extend(_docs_from_tool_result(result))
+    absorb(ledger, result)
+    payload = json.dumps(result, default=str)
+    if len(payload) > 24_000:
+        payload = payload[:24_000] + "…(truncated)"
+    messages.append({"role": "tool", "tool_call_id": call_id, "content": payload})
+    if sidecar is not None:
+        sidecar.capture("tool_result", receipt_payload(result), {"tool": name})
+        sidecar.trigger_gc()
+    step = _trace(
+        session_id,
+        step,
+        name or "tool",
+        persist,
+        query=str(args.get("query") or args.get("namespace") or ""),
+        scope=str(args.get("scope") or ""),
+        results=_brief_tool_result(result),
+        latency_ms=mongo_ms,
+        extra={"args_keys": sorted(args.keys())},
+    )
+    return step, mongo_ms
+
+
+def _run_parallel_turn(
+    *,
+    tool_calls: list[dict[str, Any]],
+    handlers: dict[str, Any],
+    ledger: Ledger,
+    session: EvidenceSession,
+    session_id: str,
+    messages: list[dict[str, Any]],
+    gathered: list[RetrievedDocument],
+    tenant_id: str,
+    persist: bool,
+    step: int,
+    sidecar: Any | None,
+    started: float,
+    cap: int,
+    reads: list[int],
+    gate: dict[str, bool],
+) -> tuple[dict[str, Any] | None, int]:
+    planned = plan_calls(tool_calls, handlers, ledger, cap=cap)
+    has_read = any(call.name != SUBMIT_TOOL for call in planned)
+    turn_submit: dict[str, Any] | None = None
+    executed_parallel = False
+    max_concurrency = 1
+    walls: list[float] = []
+    summed = 0.0
+    deadline = started + get_settings().max_elapsed_ms / 1000
+    for segment in segments(planned, cap):
+        if len(segment.calls) == 1 and segment.calls[0].name == SUBMIT_TOOL:
+            call = segment.calls[0]
+            session.tool_calls += 1
+            if has_read:
+                body: dict[str, Any] = {
+                    "deferred": True,
+                    "reason": "Submit again after the retrieval in this turn.",
+                }
+                reason = "deferred"
+            else:
+                block = _submit_block(ledger, reads, gate)
+                if block:
+                    body = {"error": block}
+                    reason = "unread"
+                else:
+                    turn_submit = call.args
+                    body = {"ok": True}
+                    reason = "agent_decided"
+            messages.append(
+                {"role": "tool", "tool_call_id": call.call_id, "content": json.dumps(body)}
+            )
+            step = _trace(session_id, step, SUBMIT_TOOL, persist, reason=reason)
+            continue
+        runnable = []
+        for call in segment.calls:
+            if call.decision != "invalid_input_reason":
+                runnable.append(call)
+                continue
+            session.tool_calls += 1
+            step, elapsed = _execute_and_record(
+                name=call.name,
+                args=call.args,
+                call_id=call.call_id,
+                result={"error": call.reason},
+                handlers=handlers,
+                ledger=ledger,
+                session=session,
+                session_id=session_id,
+                messages=messages,
+                gathered=gathered,
+                tenant_id=tenant_id,
+                persist=persist,
+                step=step,
+                sidecar=sidecar,
+                mongo_ms=0,
+                reads=reads,
+                count_read=False,
+            )
+            summed += elapsed
+        if not runnable:
+            continue
+        if segment.parallel and len(runnable) > 1:
+            executed_parallel = True
+            max_concurrency = max(max_concurrency, len(runnable))
+            batch_started = time.perf_counter()
+            pairs = run_bounded(
+                runnable,
+                lambda call: dispatch_tool(
+                    call.name, call.args, tenant_id=tenant_id, handlers=handlers
+                ),
+                deadline=deadline,
+            )
+            walls.append((time.perf_counter() - batch_started) * 1000)
+            for call, (elapsed, result) in zip(runnable, pairs, strict=True):
+                session.tool_calls += 1
+                recorded = result if isinstance(result, dict) else {"error": str(result)}
+                step, elapsed = _execute_and_record(
+                    name=call.name,
+                    args=call.args,
+                    call_id=call.call_id,
+                    result=recorded,
+                    handlers=handlers,
+                    ledger=ledger,
+                    session=session,
+                    session_id=session_id,
+                    messages=messages,
+                    gathered=gathered,
+                    tenant_id=tenant_id,
+                    persist=persist,
+                    step=step,
+                    sidecar=sidecar,
+                    mongo_ms=elapsed,
+                    reads=reads,
+                    count_read=True,
+                )
+                summed += elapsed
+            continue
+        for call in runnable:
+            session.tool_calls += 1
+            step, elapsed = _execute_and_record(
+                name=call.name,
+                args=call.args,
+                call_id=call.call_id,
+                result=None,
+                handlers=handlers,
+                ledger=ledger,
+                session=session,
+                session_id=session_id,
+                messages=messages,
+                gathered=gathered,
+                tenant_id=tenant_id,
+                persist=persist,
+                step=step,
+                sidecar=sidecar,
+                reads=reads,
+            )
+            summed += elapsed
+    _append_tool_stats(
+        session,
+        summarize(
+            planned,
+            executed_parallel=executed_parallel,
+            max_concurrency=max_concurrency,
+            batch_wall_ms=sum(walls) if walls else None,
+            sum_call_ms=summed,
+        ),
+    )
+    return turn_submit, step
 
 
 def _docs_from_tool_result(result: dict[str, Any]) -> list[RetrievedDocument]:

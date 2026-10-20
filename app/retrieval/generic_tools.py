@@ -9,10 +9,19 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from datetime import datetime
 from typing import Any
 
+from app.indexing.signals.nav_nodes import build_nav_nodes
 from app.retrieval.serialize import doc_to_retrieved
+from app.retrieval.tool_policy import (
+    ToolHandlers,
+    ToolPolicy,
+    validate_query,
+    validate_retrieve,
+    validate_search,
+)
 
 _TOKEN = re.compile(r"[a-z0-9_]+")
 _SUMMARY = 480
@@ -25,18 +34,32 @@ class GenericSurface:
         index: Any,
         embedder: Any | None = None,
         reader: Any | None = None,
+        *,
+        vectors: dict[str, list[float]] | None = None,
+        query_embedder: Any | None = None,
     ) -> None:
         self.index = index
         self._reader = reader
-        self.nodes = _nodes(index)
+        self.nodes = build_nav_nodes(index)
         self._by_id = {str(node["_id"]): node for node in self.nodes}
-        self._embedder = embedder
-        self._vector_by_id: dict[str, list[float]] = {}
-        if embedder is not None and self.nodes:
-            vectors = embedder.embed([str(node.get("search_text") or "") for node in self.nodes])
-            self._vector_by_id = {
-                str(node["_id"]): vector for node, vector in zip(self.nodes, vectors, strict=True)
+        self._embed_lock = threading.Lock()
+        self.embed_calls = {"nodes": 0, "queries": 0}
+        chosen = query_embedder if query_embedder is not None else embedder
+        self._vector_by_id = {}
+        if vectors and chosen is not None:
+            for node_id, vector in vectors.items():
+                if vector:
+                    self._vector_by_id[str(node_id)] = list(vector)
+        self._embedder = chosen if self._vector_by_id else None
+        if self._vector_by_id:
+            self.semantic = {"status": "ready", "reason": ""}
+        elif chosen is not None:
+            self.semantic = {
+                "status": "unavailable",
+                "reason": "navigation vectors are not loaded",
             }
+        else:
+            self.semantic = {"status": "lexical_only", "reason": "no embedding provider"}
 
     def handlers(self) -> dict[str, Any]:
         return {
@@ -67,6 +90,7 @@ class GenericSurface:
             "count": len(results),
             "results": results,
             "related_nodes": self._related(hits, query),
+            "index_status": dict(self.semantic),
         }
 
     def retrieve_evidence(
@@ -283,16 +307,28 @@ class GenericSurface:
         for rank, node in enumerate(lexical):
             scores[id(node)] += 1.0 / (60 + rank + 1)
         if self._vector_by_id and self._embedder is not None:
-            query_vec = self._embedder.embed([query])[0]
-            order = sorted(
-                pool,
-                key=lambda node: (
-                    -_cosine(query_vec, self._vector_by_id[str(node["_id"])]),
-                    str(node["_id"]),
-                ),
-            )
-            for rank, node in enumerate(order):
-                scores[id(node)] += 1.0 / (60 + rank + 1)
+            embedded: list[list[float]] = []
+            with self._embed_lock:
+                try:
+                    embedded = self._embedder.embed([query])
+                except Exception:
+                    embedded = []
+                else:
+                    self.embed_calls["queries"] += 1
+            query_vec = list(embedded[0]) if embedded else []
+            stored = next(iter(self._vector_by_id.values()), [])
+            if query_vec and stored and len(query_vec) != len(stored):
+                query_vec = []
+            if query_vec:
+                order = sorted(
+                    pool,
+                    key=lambda node: (
+                        -_cosine(query_vec, self._vector_by_id.get(str(node["_id"])) or []),
+                        str(node["_id"]),
+                    ),
+                )
+                for rank, node in enumerate(order):
+                    scores[id(node)] += 1.0 / (60 + rank + 1)
         return sorted(pool, key=lambda node: (-scores[id(node)], str(node["_id"])))
 
     def _docs_for(self, node: dict[str, Any], query: str, limit: int) -> list[dict[str, Any]]:
@@ -332,62 +368,51 @@ def generic_handlers(
     index: Any,
     embedder: Any | None = None,
     reader: Any | None = None,
-) -> dict[str, Any]:
-    return GenericSurface(index, embedder, reader).handlers()
+    *,
+    vectors: dict[str, list[float]] | None = None,
+) -> ToolHandlers:
+    """Ask-time handlers. `embedder` ranks queries and is not applied to navigation cards."""
+    surface = GenericSurface(
+        index,
+        reader=reader,
+        vectors=vectors,
+        query_embedder=embedder if vectors else None,
+    )
+    handlers = ToolHandlers(surface.handlers())
+    handlers.policies = _policies(surface)
+    handlers.semantic = surface.semantic
+    handlers.surface = surface
+    return handlers
 
 
-def _nodes(index: Any) -> list[dict[str, Any]]:
-    nodes: list[dict[str, Any]] = []
-    fields_by_col = {
-        str(coll["name"]): [
-            str(field["path"])
-            for field in coll.get("fields") or []
-            if "." not in str(field["path"]) and "[]" not in str(field["path"])
-        ]
-        for coll in index.profile.get("collections") or []
+def generic_handlers_with_vectors(
+    index: Any,
+    embedder: Any | None = None,
+    reader: Any | None = None,
+) -> ToolHandlers:
+    """Embed navigation nodes once for an in-memory index."""
+    from app.indexing.signals.nav_vectors import embed_nav_nodes, usable_embedder
+
+    embedder = usable_embedder(embedder)
+    vectors = None
+    if embedder is not None:
+        records, _stats = embed_nav_nodes(build_nav_nodes(index), embedder, {})
+        vectors = {row["node_id"]: row["vector"] for row in records}
+    return generic_handlers(index, embedder, reader, vectors=vectors)
+
+
+def _policies(surface: GenericSurface) -> dict[str, ToolPolicy]:
+    return {
+        "search_information": ToolPolicy(
+            True, True, False, validate_search, surface.search_information
+        ),
+        "retrieve_evidence": ToolPolicy(
+            True, True, False, validate_retrieve, surface.retrieve_evidence
+        ),
+        "query_documents": ToolPolicy(
+            True, True, False, validate_query, surface.query_documents
+        ),
     }
-    for card in index.cards:
-        collection = str(card["collection"])
-        nodes.append(
-            {
-                "_id": f"card:{collection}:{card['key']}",
-                "name": str(card.get("key")),
-                "node_type": "group",
-                "summary": str(card.get("search_text") or "")[:_SUMMARY],
-                "search_text": str(card.get("search_text") or ""),
-                "source": {
-                    "database": index.database,
-                    "collection": collection,
-                    "filter": card.get("filter") or {},
-                    "document_ids": list(card.get("document_ids") or []),
-                },
-                "schema": {"important_fields": fields_by_col.get(collection, [])[:12]},
-                "metadata": {"document_count": len(card.get("document_ids") or [])},
-            }
-        )
-    for coll in index.profile.get("collections") or []:
-        name = str(coll["name"])
-        fields = fields_by_col.get(name, [])
-        nodes.append(
-            {
-                "_id": f"col:{name}",
-                "name": name,
-                "node_type": "collection",
-                "summary": f"Collection {name}. Fields: {', '.join(fields[:12])}.",
-                "search_text": " ".join([name, *fields]),
-                "source": {
-                    "database": index.database,
-                    "collection": name,
-                    "filter": {},
-                    "document_ids": [],
-                },
-                "schema": {"important_fields": fields[:12]},
-                "metadata": {
-                    "document_count": coll.get("population") or coll.get("inspected") or 0
-                },
-            }
-        )
-    return nodes
 
 
 def _brief(node: dict[str, Any]) -> dict[str, Any]:

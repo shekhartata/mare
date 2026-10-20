@@ -9,23 +9,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.indexing.signals.store import load_generic_handlers
 from app.llm import get_embedding_model
 from app.mongo.client import get_client
-from app.retrieval.agent_loop import run_agent
+from app.retrieval.generic_ask import run_saved_generic
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Query the saved generic MARE index.")
     parser.add_argument("question")
     args = parser.parse_args()
-    session = run_agent(
-        args.question,
-        handlers=load_generic_handlers(get_client(), get_embedding_model()),
-        persist=False,
-        schema_in_prompt=False,
-    )
+    session, timing = run_saved_generic(get_client(), args.question, get_embedding_model())
     print(session.answer)
+    status = timing["index_status"]
+    print(f"{timing['request_ms']} ms (load {timing['load_ms']} ms), index {status.get('status')}")
     return 0
 
 

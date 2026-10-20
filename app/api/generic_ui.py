@@ -10,9 +10,15 @@ from pydantic import BaseModel, Field
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-from app.indexing.signals.store import MissingGenericIndex, index_database, load_generic_handlers
+from app.indexing.signals.nav_vectors import usable_embedder
+from app.indexing.signals.store import (
+    MissingGenericIndex,
+    SemanticIndexError,
+    index_database,
+    saved_index_summary,
+)
 from app.llm import get_embedding_model
-from app.retrieval.agent_loop import run_agent
+from app.retrieval.generic_ask import run_saved_generic
 
 router = APIRouter()
 _URI = re.compile(r"mongodb(?:\+srv)?://\S+")
@@ -74,6 +80,23 @@ PAGE = """<!DOCTYPE html>
     const pick = document.querySelector("#pick");
     const ask = document.querySelector("#ask");
     const database = document.querySelector("#database");
+    let saved = null;
+
+    function refreshIndexState() {
+      const current = saved && saved.database === database.value;
+      ask.hidden = !current;
+      if (current) {
+        const semantic = saved.semantic ? " (" + saved.semantic + ")." : ".";
+        status.textContent = saved.database + " is already indexed" + semantic
+          + " Ask a question below.";
+        return;
+      }
+      status.textContent = saved
+        ? "Saved index is for " + saved.database + ". Index this database to replace it."
+        : (database.options.length
+          ? "Choose a database and index it."
+          : "No user databases on this cluster.");
+    }
 
     async function post(path, body) {
       const response = await fetch(path, {
@@ -103,13 +126,17 @@ PAGE = """<!DOCTYPE html>
           database.append(option);
         }
         pick.hidden = false;
-        status.textContent = payload.databases.length
-          ? "Choose a database and index it."
-          : "No user databases on this cluster.";
+        saved = payload.index || null;
+        if (saved && [...database.options].some((option) => option.value === saved.database)) {
+          database.value = saved.database;
+        }
+        refreshIndexState();
       } catch (error) {
         status.textContent = error.message;
       }
     });
+
+    database.addEventListener("change", refreshIndexState);
 
     document.querySelector("#index").addEventListener("click", async () => {
       status.textContent = "Indexing…";
@@ -120,12 +147,21 @@ PAGE = """<!DOCTYPE html>
           database: database.value,
           limit: Number(document.querySelector("#limit").value || 0),
         });
+        saved = {
+          database: payload.database,
+          semantic: payload.semantic || "",
+        };
+        if (payload.already) {
+          refreshIndexState();
+          return;
+        }
         const partial = payload.partial.length
           ? " Partial collections: " + payload.partial.join(", ") + "."
           : "";
+        const semantic = payload.semantic ? " Semantic index: " + payload.semantic + "." : "";
         status.textContent =
           "Saved " + payload.documents + " documents as " + payload.cards +
-          " cards on " + payload.database + "." + partial +
+          " cards on " + payload.database + "." + partial + semantic +
           " You can close this page. The index stays on the cluster.";
         ask.hidden = false;
       } catch (error) {
@@ -141,7 +177,12 @@ PAGE = """<!DOCTYPE html>
           uri: uri.value,
           question: document.querySelector("#question").value,
         });
-        answer.textContent = payload.answer || "(empty answer)";
+        const indexStatus = payload.index_status || {};
+        const timing = payload.request_ms == null
+          ? ""
+          : "\\n\\n" + payload.request_ms + " ms. Index: " + (indexStatus.status || "unknown")
+            + (indexStatus.reason ? " (" + indexStatus.reason + ")" : "");
+        answer.textContent = (payload.answer || "(empty answer)") + timing;
       } catch (error) {
         answer.textContent = error.message;
       }
@@ -181,11 +222,11 @@ def connect(body: ConnectBody) -> dict:
             for name in client.list_database_names()
             if name not in _SKIP_DATABASES
         ]
+        return {"databases": names, "index": saved_index_summary(client)}
     except PyMongoError as exc:
         raise HTTPException(400, _public_error(exc)) from exc
     finally:
         client.close()
-    return {"databases": names}
 
 
 @router.post("/ui/index")
@@ -194,7 +235,15 @@ def build_index(body: IndexBody) -> dict:
         raise HTTPException(400, "Choose a database.")
     client = _open(body.uri)
     try:
-        return index_database(client, body.database.strip(), limit=body.limit or None)
+        saved = saved_index_summary(client)
+        if saved and saved["database"] == body.database.strip():
+            return saved
+        return index_database(
+            client,
+            body.database.strip(),
+            limit=body.limit or None,
+            embedder=usable_embedder(get_embedding_model()),
+        )
     except PyMongoError as exc:
         raise HTTPException(400, _public_error(exc)) from exc
     finally:
@@ -207,13 +256,10 @@ def ask_saved(body: AskBody) -> dict:
         raise HTTPException(400, "Type a question.")
     client = _open(body.uri)
     try:
-        session = run_agent(
-            body.question.strip(),
-            handlers=load_generic_handlers(client, get_embedding_model()),
-            persist=False,
-            schema_in_prompt=False,
+        session, timing = run_saved_generic(
+            client, body.question.strip(), get_embedding_model()
         )
-    except MissingGenericIndex as exc:
+    except (MissingGenericIndex, SemanticIndexError) as exc:
         raise HTTPException(409, str(exc)) from exc
     except PyMongoError as exc:
         raise HTTPException(400, _public_error(exc)) from exc
@@ -223,6 +269,9 @@ def ask_saved(body: AskBody) -> dict:
         "answer": session.answer,
         "tokens": session.tokens_consumed,
         "elapsed_ms": round(session.elapsed_ms or 0),
+        "request_ms": timing["request_ms"],
+        "load_ms": timing["load_ms"],
+        "index_status": timing["index_status"],
     }
 
 

@@ -155,16 +155,11 @@ def read_documents(
 def ask(question: str) -> dict[str, Any]:
     """Run the agent retrieval loop and return a grounded answer with Mongo citations."""
     if get_settings().generic_index:
-        from app.indexing.signals.store import load_generic_handlers
         from app.llm import get_embedding_model
         from app.mongo.client import get_client
+        from app.retrieval.generic_ask import run_saved_generic
 
-        session = run_agent(
-            question,
-            handlers=load_generic_handlers(get_client(), get_embedding_model()),
-            persist=False,
-            schema_in_prompt=False,
-        )
+        session, timing = run_saved_generic(get_client(), question, get_embedding_model())
     else:
         session = run_agent(question, tenant_id=_tenant())
     return {
@@ -182,6 +177,9 @@ def ask(question: str) -> dict[str, Any]:
         "tool_calls": session.tool_calls,
         "llm_latency_ms": session.llm_latency_ms,
         "mongo_latency_ms": session.mongo_latency_ms,
+        "request_ms": timing.get("request_ms") if get_settings().generic_index else None,
+        "load_ms": timing.get("load_ms") if get_settings().generic_index else None,
+        "index_status": timing.get("index_status") if get_settings().generic_index else None,
         "router_recommendation": session.router_recommendation.value
         if session.router_recommendation
         else None,

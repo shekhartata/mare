@@ -99,6 +99,22 @@ class Settings(BaseSettings):
     generic_sample_size: int = Field(
         default=1000, validation_alias=AliasChoices("MARE_GENERIC_SAMPLE_SIZE", "generic_sample_size")
     )
+    generic_semantic_required: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "MARE_GENERIC_SEMANTIC_REQUIRED", "generic_semantic_required"
+        ),
+    )
+    parallel_tools: str = Field(
+        default="off", validation_alias=AliasChoices("MARE_PARALLEL_TOOLS", "parallel_tools")
+    )
+    parallel_tools_cap: int = Field(
+        default=2, validation_alias=AliasChoices("MARE_PARALLEL_TOOLS_CAP", "parallel_tools_cap")
+    )
+    parallel_tools_global: int = Field(
+        default=8,
+        validation_alias=AliasChoices("MARE_PARALLEL_TOOLS_GLOBAL", "parallel_tools_global"),
+    )
 
     # Receipt compact on the tool loop (default on). ACGC sidecar is separate and off.
     compact_context: bool = Field(
