@@ -88,7 +88,8 @@ def generate_answer(
     documents: list[RetrievedDocument],
 ) -> tuple[str, list[MongoRef], int]:
     docs_blob = "\n\n".join(
-        f"[{d.ref.database}.{d.ref.collection} {d.ref.document_id}]\n{d.text}" for d in documents[:20]
+        f"[{d.ref.database}.{d.ref.collection} {d.ref.document_id}]\n{d.text}"
+        for d in documents[:20]
     )
     claims_blob = json.dumps([c.model_dump() for c in session.claims], default=str)
     prompt = (
@@ -97,6 +98,9 @@ def generate_answer(
         f"Claims: {claims_blob}\n\n"
         f"Evidence documents:\n{docs_blob}\n\n"
         "Write a grounded answer. Cite Mongo sources as database.collection:id. "
+        "Document lines are field paths and values. Report a value when its line is "
+        "in the evidence, including when the path is not the one named in the draft. "
+        "The hypothesis and claims are an unverified draft. "
         "If evidence is incomplete, say so."
     )
     result = model.generate(

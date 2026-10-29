@@ -1,6 +1,6 @@
 # Simple lookup — subscription tier
 
-- generated: 2026-08-27T06:18:12.571678+00:00
+- generated: 2026-10-29T13:22:50.306170+00:00
 - answer model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE mode: **blind** (schema_in_prompt=false)
@@ -23,13 +23,13 @@ Apex Logistics (cust_007) began failing production deployments after migration m
 
 | metric | MARE (blind) | Conventional RAG |
 | --- | --- | --- |
-| end-to-end latency | **10977 ms** | **3931 ms** |
+| end-to-end latency | **19070 ms** | **8207 ms** |
 | agent turns | 4 | n/a |
 | tool calls | 3 | n/a |
-| LLM latency | 10362 ms | n/a |
-| Mongo latency | 372 ms | n/a |
+| LLM latency | 13025 ms | n/a |
+| Mongo latency | 3630 ms | n/a |
 | retrieval operations | 1 | 1 |
-| LLM tokens | 11749 | 905 |
+| LLM tokens | 5013 | 1033 |
 | stop reason | completed | rag_topk |
 | answer correct | yes | yes |
 | evidence recall vs gold (citations) | 1.0 | 1.0 |
@@ -45,7 +45,7 @@ Persistent vector indexes (not per-query scan count): MARE searches the 616-node
 
 ## MARE answer (blind)
 
-cust_007’s current subscription tier is enterprise (mare_demo.customers:cust_007).
+enterprise (mare_demo.customers:cust_007)
 
 ### Hypothesis
 
@@ -53,7 +53,7 @@ _(none)_
 
 ### Claims
 
-- `C1` **supported** (0.90): cust_007 subscription_tier = enterprise
+- `c1` **supported** (0.86): cust_007 subscription_tier is enterprise
 
 ### Citations
 
@@ -64,7 +64,7 @@ Missed gold: none
 
 ## RAG answer
 
-Enterprise [customers cust_007]
+enterprise [customers cust_007]
 
 ### Citations
 

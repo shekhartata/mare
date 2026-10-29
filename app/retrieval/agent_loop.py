@@ -140,6 +140,9 @@ def run_agent(
         handlers = handlers or mcp_handlers()
     else:
         handlers = handlers or default_handlers()
+    asked = getattr(handlers, "surface", None)
+    if asked is not None:
+        asked.question = question
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
     acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
     compact_on = (
@@ -727,7 +730,9 @@ def _execute_and_record(
         mongo_ms = float(mongo_ms or 0)
     if not isinstance(result, dict):
         result = {"error": "tool returned an unexpected result"}
-    if name in _READ_TOOLS and (dispatched if count_read is None else count_read):
+    saw_documents = name == "search_information" and bool(result.get("documents"))
+    counts_as_read = name in _READ_TOOLS or saw_documents
+    if counts_as_read and (dispatched if count_read is None else count_read):
         if reads is not None:
             reads[0] += 1
     session.mongo_latency_ms += mongo_ms
@@ -738,7 +743,7 @@ def _execute_and_record(
         ms=round(mongo_ms),
         **_step_detail(handlers, result),
     )
-    if name in {"retrieve_evidence", "query_documents", "find", "count"}:
+    if name in {"retrieve_evidence", "query_documents", "find", "count"} or saw_documents:
         session.retrieval_count += 1
     gathered.extend(_docs_from_tool_result(result))
     absorb(ledger, result)
