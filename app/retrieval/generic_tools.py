@@ -10,11 +10,12 @@ import json
 import math
 import re
 import threading
+import time
 from datetime import datetime
 from typing import Any
 
 from app.indexing.signals.nav_nodes import build_nav_nodes
-from app.retrieval.serialize import doc_to_retrieved
+from app.retrieval.serialize import doc_to_retrieved, doc_to_text
 from app.retrieval.tool_policy import (
     ToolHandlers,
     ToolPolicy,
@@ -24,8 +25,10 @@ from app.retrieval.tool_policy import (
 )
 
 _TOKEN = re.compile(r"[a-z0-9_]+")
+_NAMED_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{3,}")
 _SUMMARY = 480
 _DOC_CHARS = 1400
+MEMBER_PREFETCH_LIMIT = 200
 
 
 class GenericSurface:
@@ -44,6 +47,12 @@ class GenericSurface:
         self._by_id = {str(node["_id"]): node for node in self.nodes}
         self._embed_lock = threading.Lock()
         self.embed_calls = {"nodes": 0, "queries": 0}
+        self.last_timing: dict[str, int] = {}
+        self._fetch_ms = 0.0
+        self._fetch_docs = 0
+        self._fetch_ids = 0
+        self._embed_ms = 0.0
+        self.question = ""
         chosen = query_embedder if query_embedder is not None else embedder
         self._vector_by_id = {}
         if vectors and chosen is not None:
@@ -78,6 +87,7 @@ class GenericSurface:
         limit: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id
+        self._begin_timing()
         cap = max(1, min(int(limit or 8), 8))
         pool = self._scoped(scope)
         ranked = self._rank(query, pool)
@@ -85,13 +95,19 @@ class GenericSurface:
         if not hits:
             hits = [node for node in pool if node["node_type"] == "collection"][:cap]
         results = [_brief(node) for node in hits]
-        return {
+        documents = self._documents_named_in(self._focus(query), cap)
+        related = self._related([*hits, *_origins_for(documents)], query)
+        self._finish_timing()
+        payload: dict[str, Any] = {
             "method": mode or "hybrid",
             "count": len(results),
-            "results": results,
-            "related_nodes": self._related(hits, query),
-            "index_status": dict(self.semantic),
         }
+        if documents:
+            payload["documents"] = documents
+        payload["results"] = results
+        payload["related_nodes"] = related
+        payload["index_status"] = dict(self.semantic)
+        return payload
 
     def retrieve_evidence(
         self,
@@ -102,9 +118,11 @@ class GenericSurface:
         max_documents: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id
+        self._begin_timing()
         cap = max(1, min(int(max_documents or 8), 20))
         documents: list[dict[str, Any]] = []
         missing: list[str] = []
+        hints: list[dict[str, Any]] = []
         origins: list[dict[str, Any]] = []
         seen: set[str] = set()
         for node_id in [str(n) for n in (node_ids or []) if n][:8]:
@@ -128,6 +146,27 @@ class GenericSurface:
             if node is None:
                 missing.append(node_id)
                 continue
+            id_list = list((node.get("source") or {}).get("document_ids") or [])
+            named = _member_ids_named(id_list, self._focus(query or ""))
+            if len(id_list) > MEMBER_PREFETCH_LIMIT and named:
+                self._collect_named(
+                    node, named[:cap], documents, seen, origins, self._focus(query or ""), cap
+                )
+                if len(documents) >= cap:
+                    break
+                continue
+            if len(id_list) > MEMBER_PREFETCH_LIMIT:
+                hints.append(
+                    {
+                        "node_id": node_id,
+                        "document_count": len(id_list),
+                        "hint": (
+                            f"card has {len(id_list)} documents; "
+                            "use query_documents with a filter"
+                        ),
+                    }
+                )
+                continue
             origins.append(node)
             for doc in self._docs_for(node, query or "", cap):
                 key = f"{doc['ref']['collection']}:{doc['ref']['document_id']}"
@@ -139,12 +178,14 @@ class GenericSurface:
                     break
             if len(documents) >= cap:
                 break
+        related = self._related(origins, query or "")
+        self._finish_timing()
         return {
             "count": len(documents),
             "documents": documents,
             "missing_nodes": missing,
-            "hints": [],
-            "related_nodes": self._related(origins, query or ""),
+            "hints": hints,
+            "related_nodes": related,
         }
 
     def query_documents(
@@ -157,22 +198,23 @@ class GenericSurface:
         limit: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id, projection
+        self._begin_timing()
         filt = _as_dict(filter)
         if _forbidden(filt):
+            self._finish_timing()
             return {"error": "operator not allowlisted"}
         if "." not in (namespace or ""):
+            self._finish_timing()
             return {"error": "namespace must be database.collection"}
         database, collection = namespace.split(".", 1)
         if database != self.index.database or not self._known(collection):
+            self._finish_timing()
             return {"error": f"unknown namespace {namespace}"}
         cap = max(1, min(int(limit or 10), 20))
         matched = self._rows(collection, filt=filt, limit=cap)
-        docs = [_payload(doc, database, collection) for doc in matched]
-        return {
-            "count": len(docs),
-            "namespace": namespace,
-            "documents": docs,
-            "related_nodes": self._related(
+        docs = [_payload(doc, database, collection, focus=self._focus()) for doc in matched]
+        related = (
+            self._related(
                 [
                     {
                         "source": {
@@ -184,7 +226,14 @@ class GenericSurface:
                 "",
             )
             if len(docs) <= 3
-            else [],
+            else []
+        )
+        self._finish_timing()
+        return {
+            "count": len(docs),
+            "namespace": namespace,
+            "documents": docs,
+            "related_nodes": related,
         }
 
     def _related(self, nodes: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
@@ -248,9 +297,73 @@ class GenericSurface:
         return out
 
     def _members(self, collection: str, document_ids: list[Any]) -> list[dict[str, Any]]:
-        if not document_ids:
+        if not document_ids or len(document_ids) > MEMBER_PREFETCH_LIMIT:
             return []
         return self._rows(collection, ids=document_ids)
+
+    def _documents_named_in(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """Point-read ids the question names, from every collection that contains them."""
+        named = _ids_named_in_query(query)
+        if not named or limit < 1:
+            return []
+        picks: list[tuple[str, str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for node in self.nodes:
+            source = node.get("source") or {}
+            collection = str(source.get("collection") or "")
+            database = str(source.get("database") or self.index.database)
+            if not collection:
+                continue
+            for doc_id in source.get("document_ids") or []:
+                text = str(doc_id)
+                key = (collection, text)
+                if text.lower() not in named or key in seen:
+                    continue
+                seen.add(key)
+                picks.append((database, collection, text))
+                if len(picks) >= limit:
+                    break
+            if len(picks) >= limit:
+                break
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for database, collection, text in picks:
+            grouped.setdefault((database, collection), []).append(text)
+        documents: list[dict[str, Any]] = []
+        for (database, collection), ids in grouped.items():
+            for doc in self._rows(collection, ids=ids):
+                documents.append(_payload(doc, database, collection, focus=self._focus(query)))
+                if len(documents) >= limit:
+                    return documents
+        return documents
+
+    def _collect_named(
+        self,
+        node: dict[str, Any],
+        ids: list[Any],
+        documents: list[dict[str, Any]],
+        seen: set[str],
+        origins: list[dict[str, Any]],
+        focus: str,
+        cap: int,
+    ) -> None:
+        source = node.get("source") or {}
+        collection = str(source.get("collection") or "")
+        database = str(source.get("database") or self.index.database)
+        if not collection or not ids:
+            return
+        added: list[str] = []
+        for doc in self._rows(collection, ids=list(ids)):
+            payload = _payload(doc, database, collection, focus=focus)
+            key = f"{payload['ref']['collection']}:{payload['ref']['document_id']}"
+            if key in seen:
+                continue
+            seen.add(key)
+            documents.append(payload)
+            added.append(str(payload["ref"]["document_id"]))
+            if len(documents) >= cap:
+                break
+        if added:
+            origins.append({"source": {"collection": collection, "document_ids": added}})
 
     def _hop_docs(self, node_id: str, limit: int) -> list[dict[str, Any]]:
         _prefix, collection, field, value = node_id.split(":", 3)
@@ -266,6 +379,25 @@ class GenericSurface:
         }
         return collection in names
 
+    def _focus(self, query: str = "") -> str:
+        parts = [str(self.question or ""), str(query or "")]
+        return "\n".join(part for part in parts if part)
+
+    def _begin_timing(self) -> None:
+        self._fetch_ms = 0.0
+        self._fetch_docs = 0
+        self._fetch_ids = 0
+        self._embed_ms = 0.0
+        self.last_timing = {}
+
+    def _finish_timing(self) -> None:
+        self.last_timing = {
+            "embed_ms": round(self._embed_ms),
+            "fetch_ms": round(self._fetch_ms),
+            "fetch_docs": self._fetch_docs,
+            "fetch_ids": self._fetch_ids,
+        }
+
     def _rows(
         self,
         collection: str,
@@ -275,15 +407,21 @@ class GenericSurface:
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         if self._reader is not None:
-            return self._reader.fetch(collection, ids=ids, filt=filt, limit=limit)
-        rows = list(self.index.documents.get(collection) or [])
-        if ids:
-            wanted = {str(i) for i in ids}
-            rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
-        if filt:
-            rows = [doc for doc in rows if _matches(doc, filt)]
-        if limit is not None:
-            rows = rows[: int(limit)]
+            started = time.perf_counter()
+            rows = self._reader.fetch(collection, ids=ids, filt=filt, limit=limit)
+        else:
+            started = time.perf_counter()
+            rows = list(self.index.documents.get(collection) or [])
+            if ids:
+                wanted = {str(i) for i in ids}
+                rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
+            if filt:
+                rows = [doc for doc in rows if _matches(doc, filt)]
+            if limit is not None:
+                rows = rows[: int(limit)]
+        self._fetch_ms += (time.perf_counter() - started) * 1000
+        self._fetch_docs += len(rows)
+        self._fetch_ids += len(ids or [])
         return rows
 
     def _scoped(self, scope: str | None) -> list[dict[str, Any]]:
@@ -309,12 +447,14 @@ class GenericSurface:
         if self._vector_by_id and self._embedder is not None:
             embedded: list[list[float]] = []
             with self._embed_lock:
+                started = time.perf_counter()
                 try:
                     embedded = self._embedder.embed([query])
                 except Exception:
                     embedded = []
                 else:
                     self.embed_calls["queries"] += 1
+                self._embed_ms += (time.perf_counter() - started) * 1000
             query_vec = list(embedded[0]) if embedded else []
             stored = next(iter(self._vector_by_id.values()), [])
             if query_vec and stored and len(query_vec) != len(stored):
@@ -336,6 +476,8 @@ class GenericSurface:
         collection = str(source.get("collection") or "")
         database = str(source.get("database") or self.index.database)
         id_list = list(source.get("document_ids") or [])
+        if len(id_list) > MEMBER_PREFETCH_LIMIT:
+            return []
         filt = source.get("filter") or {}
         applied = None
         if filt and filt != {"_id": {"$in": id_list}}:
@@ -361,7 +503,8 @@ class GenericSurface:
                 doc for doc in ranked if _overlap(query, {"search_text": _text(doc)}) > 0
             ]
             rows = matched or ranked
-        return [_payload(doc, database, collection) for doc in rows[:limit]]
+        focused = self._focus(query)
+        return [_payload(doc, database, collection, focus=focused) for doc in rows[:limit]]
 
 
 def generic_handlers(
@@ -425,7 +568,6 @@ def _brief(node: dict[str, Any]) -> dict[str, Any]:
         "source": {
             "database": source.get("database"),
             "collection": source.get("collection"),
-            "filter": source.get("filter") or {},
             "document_ids": list(source.get("document_ids") or [])[:8],
         },
         "document_count": (node.get("metadata") or {}).get("document_count"),
@@ -434,13 +576,45 @@ def _brief(node: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _payload(doc: dict[str, Any], database: str, collection: str) -> dict[str, Any]:
+def _payload(
+    doc: dict[str, Any], database: str, collection: str, *, focus: str = ""
+) -> dict[str, Any]:
     retrieved = doc_to_retrieved(doc, database, collection)
     return {
         "ref": retrieved.ref.model_dump(),
-        "text": (retrieved.text or "")[:_DOC_CHARS],
+        "text": doc_to_text(doc, max_chars=_DOC_CHARS, focus=focus),
         "score": retrieved.score,
     }
+
+
+def _origins_for(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[str]] = {}
+    for doc in documents:
+        ref = doc.get("ref") or {}
+        collection = str(ref.get("collection") or "")
+        doc_id = str(ref.get("document_id") or "")
+        if collection and doc_id:
+            grouped.setdefault(collection, []).append(doc_id)
+    return [
+        {"source": {"collection": collection, "document_ids": ids}}
+        for collection, ids in grouped.items()
+    ]
+
+
+def _ids_named_in_query(query: str) -> set[str]:
+    named: set[str] = set()
+    for match in _NAMED_ID.finditer(query or ""):
+        token = match.group(0)
+        if any(character.isdigit() for character in token):
+            named.add(token.lower())
+    return named
+
+
+def _member_ids_named(document_ids: list[Any], query: str) -> list[Any]:
+    named = _ids_named_in_query(query)
+    if not named:
+        return []
+    return [doc_id for doc_id in document_ids if str(doc_id).lower() in named]
 
 
 def _text(doc: dict[str, Any]) -> str:

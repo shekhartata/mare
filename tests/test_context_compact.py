@@ -80,6 +80,48 @@ def test_compact_keeps_pairing_and_node_ids():
     assert "xxxx" not in json.loads(out[3]["content"]).get("results", [{}])[0].get("summary", "")
 
 
+def test_compact_keeps_a_document_returned_with_search_hits():
+    payload = {
+        "method": "hybrid",
+        "count": 1,
+        "documents": [
+            {
+                "ref": {
+                    "database": "mi_transformation",
+                    "collection": "api_loan_instances",
+                    "document_id": "415c5349-d293-5e99-9e29-34949c4b8c54",
+                },
+                "text": (
+                    "underwriting.desktopUnderwriterRecommendationType: APPROVE-ELIGIBLE\n"
+                    + ("x" * 3000)
+                ),
+            }
+        ],
+        "results": [
+            {
+                "node_id": "card:api_loan_instances:sem:root:p0",
+                "name": "sem:root:p0",
+                "source": {
+                    "collection": "api_loan_instances",
+                    "filter": {"_id": {"$in": [f"id-{i}" for i in range(5000)]}},
+                },
+            }
+        ],
+        "related_nodes": [],
+    }
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "recommendation"},
+        _assistant("c1", "search_information"),
+        _tool("c1", payload),
+    ]
+    out = compact_messages(messages, token_budget=8000)
+    seen = json.loads(out[-1]["content"])
+    assert "APPROVE-ELIGIBLE" in seen["documents"][0]["text"]
+    assert seen["results"][0]["source"]["filter"] == {}
+    assert "id-4999" not in out[-1]["content"]
+
+
 def test_compact_noop_on_prefix_only():
     messages = [
         {"role": "system", "content": "sys"},

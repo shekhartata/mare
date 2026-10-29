@@ -178,11 +178,36 @@ PAGE = """<!DOCTYPE html>
           question: document.querySelector("#question").value,
         });
         const indexStatus = payload.index_status || {};
-        const timing = payload.request_ms == null
-          ? ""
-          : "\\n\\n" + payload.request_ms + " ms. Index: " + (indexStatus.status || "unknown")
-            + (indexStatus.reason ? " (" + indexStatus.reason + ")" : "");
-        answer.textContent = (payload.answer || "(empty answer)") + timing;
+        const lines = [];
+        lines.push(
+          (payload.request_ms == null ? "?" : payload.request_ms) + " ms total. Load "
+          + (payload.load_ms == null ? "?" : payload.load_ms) + " ms."
+        );
+        lines.push(
+          "Model " + (payload.llm_latency_ms == null ? "?" : payload.llm_latency_ms)
+          + " ms. Mongo " + (payload.mongo_latency_ms == null ? "?" : payload.mongo_latency_ms)
+          + " ms. Turns " + (payload.agent_turns == null ? "?" : payload.agent_turns)
+          + ". Tools " + (payload.tool_calls == null ? "?" : payload.tool_calls) + "."
+        );
+        (payload.steps || []).forEach((step, index) => {
+          let line = (index + 1) + ". " + step.kind + " " + step.name + " " + step.ms + " ms";
+          if (step.tools && step.tools.length) line += " [" + step.tools.join(", ") + "]";
+          if (step.embed_ms) line += ". Embed " + step.embed_ms + " ms";
+          if (step.fetch_docs || step.fetch_ids) {
+            line += ". Fetch " + (step.fetch_ms || 0) + " ms, "
+              + step.fetch_docs + " docs from " + step.fetch_ids + " ids";
+          }
+          if (step.nodes && step.nodes.length) line += ". " + step.nodes.join(", ");
+          if (step.docs && step.docs.length) line += ". " + step.docs.join(", ");
+          if (step.reason) line += ". " + step.reason;
+          if (step.error) line += ". " + step.error;
+          lines.push(line);
+        });
+        lines.push(
+          "Index: " + (indexStatus.status || "unknown")
+          + (indexStatus.reason ? " (" + indexStatus.reason + ")" : "")
+        );
+        answer.textContent = (payload.answer || "(empty answer)") + "\\n\\n" + lines.join("\\n");
       } catch (error) {
         answer.textContent = error.message;
       }
@@ -272,6 +297,11 @@ def ask_saved(body: AskBody) -> dict:
         "request_ms": timing["request_ms"],
         "load_ms": timing["load_ms"],
         "index_status": timing["index_status"],
+        "llm_latency_ms": round(session.llm_latency_ms or 0),
+        "mongo_latency_ms": round(session.mongo_latency_ms or 0),
+        "agent_turns": session.agent_turns,
+        "tool_calls": session.tool_calls,
+        "steps": list((session.tool_stats or {}).get("steps") or []),
     }
 
 

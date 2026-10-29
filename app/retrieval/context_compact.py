@@ -119,30 +119,28 @@ def _receipt(content: str, *, cap: int) -> str:
 
 def _brief(data: dict[str, Any]) -> dict[str, Any]:
     if "results" in data:
-        related = [_related(n) for n in (data.get("related_nodes") or [])[:8] if isinstance(n, dict)]
-        return {
+        related = [
+            _related(node)
+            for node in (data.get("related_nodes") or [])[:8]
+            if isinstance(node, dict)
+        ]
+        out = {
             "method": data.get("method"),
             "count": data.get("count"),
             "results": [_node(n) for n in (data.get("results") or [])[:8] if isinstance(n, dict)],
             "related_nodes": related,
         }
+        docs = _document_briefs(data)
+        if docs:
+            out = {"documents": docs, **out}
+        return out
     if "documents" in data:
-        related = [_related(n) for n in (data.get("related_nodes") or [])[:8] if isinstance(n, dict)]
-        docs = []
-        for d in (data.get("documents") or [])[:8]:
-            if not isinstance(d, dict):
-                continue
-            ref = d.get("ref") or {}
-            docs.append(
-                {
-                    "ref": {
-                        "database": ref.get("database"),
-                        "collection": ref.get("collection"),
-                        "document_id": ref.get("document_id"),
-                    },
-                    "text": str(d.get("text") or "")[:280],
-                }
-            )
+        related = [
+            _related(node)
+            for node in (data.get("related_nodes") or [])[:8]
+            if isinstance(node, dict)
+        ]
+        docs = _document_briefs(data)
         out: dict[str, Any] = {"count": data.get("count"), "documents": docs}
         if data.get("namespace"):
             out["namespace"] = data.get("namespace")
@@ -156,6 +154,34 @@ def _brief(data: dict[str, Any]) -> dict[str, Any]:
     return {k: data[k] for k in list(data)[:8]}
 
 
+def _document_briefs(data: dict[str, Any]) -> list[dict[str, Any]]:
+    docs = []
+    for doc in (data.get("documents") or [])[:8]:
+        if not isinstance(doc, dict):
+            continue
+        ref = doc.get("ref") or {}
+        docs.append(
+            {
+                "ref": {
+                    "database": ref.get("database"),
+                    "collection": ref.get("collection"),
+                    "document_id": ref.get("document_id"),
+                },
+                "text": str(doc.get("text") or "")[:1200],
+            }
+        )
+    return docs
+
+
+def _small_filter(filt: Any) -> dict[str, Any]:
+    if not isinstance(filt, dict):
+        return {}
+    listed = filt.get("_id")
+    if isinstance(listed, dict) and isinstance(listed.get("$in"), list) and len(listed["$in"]) > 8:
+        return {}
+    return filt
+
+
 def _node(node: dict[str, Any]) -> dict[str, Any]:
     source = node.get("source") or {}
     out: dict[str, Any] = {
@@ -165,7 +191,7 @@ def _node(node: dict[str, Any]) -> dict[str, Any]:
         "source": {
             "database": source.get("database"),
             "collection": source.get("collection"),
-            "filter": source.get("filter") or {},
+            "filter": _small_filter(source.get("filter") or {}),
         },
         "important_fields": list(node.get("important_fields") or [])[:12],
     }

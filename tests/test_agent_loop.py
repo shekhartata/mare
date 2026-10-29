@@ -195,6 +195,19 @@ def test_loop_search_retrieve_submit():
     assert session.claims[0].claim_id == "C1"
     assert session.citations[0].document_id == "log_1001"
     assert session.citations[0].collection == "logs"
+    steps = session.tool_stats["steps"]
+    assert [step["kind"] for step in steps] == [
+        "model",
+        "tool",
+        "model",
+        "tool",
+        "model",
+        "tool",
+    ]
+    assert steps[1]["name"] == "search_information"
+    assert steps[1]["nodes"] == ["nav:group:cust_007"]
+    assert steps[3]["docs"] == ["logs:log_1001"]
+    assert steps[5] == {"kind": "tool", "name": "submit_answer", "ms": 0, "reason": "agent_decided"}
     assert client._script == []
     assert client.calls[0]["reasoning_effort"] == "low"
     assert client.calls[0]["tool_choice"] == "auto"
