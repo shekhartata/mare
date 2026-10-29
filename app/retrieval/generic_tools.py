@@ -10,6 +10,7 @@ import json
 import math
 import re
 import threading
+import time
 from datetime import datetime
 from typing import Any
 
@@ -44,6 +45,11 @@ class GenericSurface:
         self._by_id = {str(node["_id"]): node for node in self.nodes}
         self._embed_lock = threading.Lock()
         self.embed_calls = {"nodes": 0, "queries": 0}
+        self.last_timing: dict[str, int] = {}
+        self._fetch_ms = 0.0
+        self._fetch_docs = 0
+        self._fetch_ids = 0
+        self._embed_ms = 0.0
         chosen = query_embedder if query_embedder is not None else embedder
         self._vector_by_id = {}
         if vectors and chosen is not None:
@@ -78,6 +84,7 @@ class GenericSurface:
         limit: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id
+        self._begin_timing()
         cap = max(1, min(int(limit or 8), 8))
         pool = self._scoped(scope)
         ranked = self._rank(query, pool)
@@ -85,11 +92,13 @@ class GenericSurface:
         if not hits:
             hits = [node for node in pool if node["node_type"] == "collection"][:cap]
         results = [_brief(node) for node in hits]
+        related = self._related(hits, query)
+        self._finish_timing()
         return {
             "method": mode or "hybrid",
             "count": len(results),
             "results": results,
-            "related_nodes": self._related(hits, query),
+            "related_nodes": related,
             "index_status": dict(self.semantic),
         }
 
@@ -102,6 +111,7 @@ class GenericSurface:
         max_documents: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id
+        self._begin_timing()
         cap = max(1, min(int(max_documents or 8), 20))
         documents: list[dict[str, Any]] = []
         missing: list[str] = []
@@ -139,12 +149,14 @@ class GenericSurface:
                     break
             if len(documents) >= cap:
                 break
+        related = self._related(origins, query or "")
+        self._finish_timing()
         return {
             "count": len(documents),
             "documents": documents,
             "missing_nodes": missing,
             "hints": [],
-            "related_nodes": self._related(origins, query or ""),
+            "related_nodes": related,
         }
 
     def query_documents(
@@ -157,22 +169,23 @@ class GenericSurface:
         limit: int | None = None,
     ) -> dict[str, Any]:
         del tenant_id, projection
+        self._begin_timing()
         filt = _as_dict(filter)
         if _forbidden(filt):
+            self._finish_timing()
             return {"error": "operator not allowlisted"}
         if "." not in (namespace or ""):
+            self._finish_timing()
             return {"error": "namespace must be database.collection"}
         database, collection = namespace.split(".", 1)
         if database != self.index.database or not self._known(collection):
+            self._finish_timing()
             return {"error": f"unknown namespace {namespace}"}
         cap = max(1, min(int(limit or 10), 20))
         matched = self._rows(collection, filt=filt, limit=cap)
         docs = [_payload(doc, database, collection) for doc in matched]
-        return {
-            "count": len(docs),
-            "namespace": namespace,
-            "documents": docs,
-            "related_nodes": self._related(
+        related = (
+            self._related(
                 [
                     {
                         "source": {
@@ -184,7 +197,14 @@ class GenericSurface:
                 "",
             )
             if len(docs) <= 3
-            else [],
+            else []
+        )
+        self._finish_timing()
+        return {
+            "count": len(docs),
+            "namespace": namespace,
+            "documents": docs,
+            "related_nodes": related,
         }
 
     def _related(self, nodes: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
@@ -266,6 +286,21 @@ class GenericSurface:
         }
         return collection in names
 
+    def _begin_timing(self) -> None:
+        self._fetch_ms = 0.0
+        self._fetch_docs = 0
+        self._fetch_ids = 0
+        self._embed_ms = 0.0
+        self.last_timing = {}
+
+    def _finish_timing(self) -> None:
+        self.last_timing = {
+            "embed_ms": round(self._embed_ms),
+            "fetch_ms": round(self._fetch_ms),
+            "fetch_docs": self._fetch_docs,
+            "fetch_ids": self._fetch_ids,
+        }
+
     def _rows(
         self,
         collection: str,
@@ -275,15 +310,21 @@ class GenericSurface:
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         if self._reader is not None:
-            return self._reader.fetch(collection, ids=ids, filt=filt, limit=limit)
-        rows = list(self.index.documents.get(collection) or [])
-        if ids:
-            wanted = {str(i) for i in ids}
-            rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
-        if filt:
-            rows = [doc for doc in rows if _matches(doc, filt)]
-        if limit is not None:
-            rows = rows[: int(limit)]
+            started = time.perf_counter()
+            rows = self._reader.fetch(collection, ids=ids, filt=filt, limit=limit)
+        else:
+            started = time.perf_counter()
+            rows = list(self.index.documents.get(collection) or [])
+            if ids:
+                wanted = {str(i) for i in ids}
+                rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
+            if filt:
+                rows = [doc for doc in rows if _matches(doc, filt)]
+            if limit is not None:
+                rows = rows[: int(limit)]
+        self._fetch_ms += (time.perf_counter() - started) * 1000
+        self._fetch_docs += len(rows)
+        self._fetch_ids += len(ids or [])
         return rows
 
     def _scoped(self, scope: str | None) -> list[dict[str, Any]]:
@@ -309,12 +350,14 @@ class GenericSurface:
         if self._vector_by_id and self._embedder is not None:
             embedded: list[list[float]] = []
             with self._embed_lock:
+                started = time.perf_counter()
                 try:
                     embedded = self._embedder.embed([query])
                 except Exception:
                     embedded = []
                 else:
                     self.embed_calls["queries"] += 1
+                self._embed_ms += (time.perf_counter() - started) * 1000
             query_vec = list(embedded[0]) if embedded else []
             stored = next(iter(self._vector_by_id.values()), [])
             if query_vec and stored and len(query_vec) != len(stored):

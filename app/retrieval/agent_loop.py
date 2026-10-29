@@ -307,6 +307,16 @@ def _tool_loop(
                 ),
             )
         tool_calls = list(assistant_dict.get("tool_calls") or [])
+        _record_step(
+            session,
+            kind="model",
+            name=agent_model,
+            ms=round(llm_ms),
+            tools=[
+                (tc.get("function") or {}).get("name") or "reply" for tc in tool_calls
+            ]
+            or ["reply"],
+        )
         step = _trace(
             session_id,
             step,
@@ -376,6 +386,7 @@ def _tool_loop(
                     reason="forced",
                     extra={"draft": True},
                 )
+                _record_step(session, kind="tool", name=SUBMIT_TOOL, ms=0, reason="forced")
             break
 
         if mode == "on":
@@ -430,6 +441,9 @@ def _tool_loop(
                             }
                         )
                         step = _trace(session_id, step, SUBMIT_TOOL, persist, reason="unread")
+                        _record_step(
+                            session, kind="tool", name=SUBMIT_TOOL, ms=0, reason="unread"
+                        )
                         continue
                     turn_submit = args
                     messages.append(
@@ -440,6 +454,9 @@ def _tool_loop(
                         }
                     )
                     step = _trace(session_id, step, SUBMIT_TOOL, persist, reason="agent_decided")
+                    _record_step(
+                        session, kind="tool", name=SUBMIT_TOOL, ms=0, reason="agent_decided"
+                    )
                     continue
                 step, _mongo_ms = _execute_and_record(
                     name=name,
@@ -492,9 +509,17 @@ def _tool_loop(
     if needs_synthesis and reasoner is not None:
         t_syn = time.perf_counter()
         answer, synth_cites, tokens = generate_answer(reasoner, session, gathered)
-        session.llm_latency_ms += (time.perf_counter() - t_syn) * 1000
+        synth_ms = (time.perf_counter() - t_syn) * 1000
+        session.llm_latency_ms += synth_ms
         session.tokens_consumed += tokens
         session.agent_turns += 1
+        _record_step(
+            session,
+            kind="model",
+            name=answer_model,
+            ms=round(synth_ms),
+            tools=["synthesize"],
+        )
         if synth_cites:
             citations = _merge_citations(synth_cites, citations)
         step = _trace(
@@ -612,6 +637,45 @@ def _append_tool_stats(session: EvidenceSession, summary: dict[str, Any]) -> Non
     session.tool_stats = stats
 
 
+def _record_step(session: EvidenceSession, **step: Any) -> None:
+    stats = dict(session.tool_stats or {})
+    steps = list(stats.get("steps") or [])
+    steps.append(step)
+    stats["steps"] = steps
+    session.tool_stats = stats
+
+
+def _step_detail(handlers: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    surface = getattr(handlers, "surface", None)
+    timing = dict(getattr(surface, "last_timing", {}) or {})
+    if surface is not None:
+        surface.last_timing = {}
+    detail = {
+        key: timing[key]
+        for key in ("embed_ms", "fetch_ms", "fetch_docs", "fetch_ids")
+        if key in timing
+    }
+    error = result.get("error")
+    if error:
+        detail["error"] = str(error)[:160]
+    nodes = [
+        str(row.get("node_id"))
+        for row in (result.get("results") or [])
+        if isinstance(row, dict) and row.get("node_id")
+    ]
+    if nodes:
+        detail["nodes"] = nodes[:8]
+    docs = []
+    for doc in (result.get("documents") or [])[:8]:
+        if not isinstance(doc, dict):
+            continue
+        ref = doc.get("ref") or {}
+        docs.append(f"{ref.get('collection')}:{ref.get('document_id')}")
+    if docs:
+        detail["docs"] = docs
+    return detail
+
+
 def _submit_block(ledger: Ledger, reads: list[int], gate: dict[str, bool]) -> str | None:
     """Ask for a document read once. The next submit is accepted."""
     if reads[0] or gate["bounced"]:
@@ -667,6 +731,13 @@ def _execute_and_record(
         if reads is not None:
             reads[0] += 1
     session.mongo_latency_ms += mongo_ms
+    _record_step(
+        session,
+        kind="tool",
+        name=name or "tool",
+        ms=round(mongo_ms),
+        **_step_detail(handlers, result),
+    )
     if name in {"retrieve_evidence", "query_documents", "find", "count"}:
         session.retrieval_count += 1
     gathered.extend(_docs_from_tool_result(result))
@@ -741,6 +812,7 @@ def _run_parallel_turn(
                 {"role": "tool", "tool_call_id": call.call_id, "content": json.dumps(body)}
             )
             step = _trace(session_id, step, SUBMIT_TOOL, persist, reason=reason)
+            _record_step(session, kind="tool", name=SUBMIT_TOOL, ms=0, reason=reason)
             continue
         runnable = []
         for call in segment.calls:
