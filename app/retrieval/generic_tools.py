@@ -27,6 +27,7 @@ from app.retrieval.tool_policy import (
 _TOKEN = re.compile(r"[a-z0-9_]+")
 _SUMMARY = 480
 _DOC_CHARS = 1400
+MEMBER_PREFETCH_LIMIT = 100
 
 
 class GenericSurface:
@@ -115,6 +116,7 @@ class GenericSurface:
         cap = max(1, min(int(max_documents or 8), 20))
         documents: list[dict[str, Any]] = []
         missing: list[str] = []
+        hints: list[dict[str, Any]] = []
         origins: list[dict[str, Any]] = []
         seen: set[str] = set()
         for node_id in [str(n) for n in (node_ids or []) if n][:8]:
@@ -138,6 +140,19 @@ class GenericSurface:
             if node is None:
                 missing.append(node_id)
                 continue
+            id_list = list((node.get("source") or {}).get("document_ids") or [])
+            if len(id_list) > MEMBER_PREFETCH_LIMIT:
+                hints.append(
+                    {
+                        "node_id": node_id,
+                        "document_count": len(id_list),
+                        "hint": (
+                            f"card has {len(id_list)} documents; "
+                            "use query_documents with a filter"
+                        ),
+                    }
+                )
+                continue
             origins.append(node)
             for doc in self._docs_for(node, query or "", cap):
                 key = f"{doc['ref']['collection']}:{doc['ref']['document_id']}"
@@ -155,7 +170,7 @@ class GenericSurface:
             "count": len(documents),
             "documents": documents,
             "missing_nodes": missing,
-            "hints": [],
+            "hints": hints,
             "related_nodes": related,
         }
 
@@ -268,7 +283,7 @@ class GenericSurface:
         return out
 
     def _members(self, collection: str, document_ids: list[Any]) -> list[dict[str, Any]]:
-        if not document_ids:
+        if not document_ids or len(document_ids) > MEMBER_PREFETCH_LIMIT:
             return []
         return self._rows(collection, ids=document_ids)
 
@@ -379,6 +394,8 @@ class GenericSurface:
         collection = str(source.get("collection") or "")
         database = str(source.get("database") or self.index.database)
         id_list = list(source.get("document_ids") or [])
+        if len(id_list) > MEMBER_PREFETCH_LIMIT:
+            return []
         filt = source.get("filter") or {}
         applied = None
         if filt and filt != {"_id": {"$in": id_list}}:

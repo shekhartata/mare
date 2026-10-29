@@ -4,7 +4,7 @@ from app.datagen.shop_fixture import documents as shop_documents
 from app.datagen.warehouse_fixture import documents as warehouse_documents
 from app.indexing.signals import build_generic_index, reset_index_state
 from app.indexing.signals.nav_nodes import build_nav_nodes
-from app.retrieval.generic_tools import GenericSurface, generic_handlers
+from app.retrieval.generic_tools import MEMBER_PREFETCH_LIMIT, GenericSurface, generic_handlers
 
 
 def setup_function() -> None:
@@ -87,6 +87,49 @@ def test_query_embed_failure_keeps_lexical_hits():
     assert hits["results"]
     assert surface.embed_calls["queries"] == 0
     assert "error" not in hits
+
+
+def test_large_card_is_not_prefetched_and_a_bounded_card_still_is():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+
+    class Reader:
+        def __init__(self) -> None:
+            self.sizes: list[int] = []
+
+        def fetch(self, collection, *, ids=None, filt=None, limit=None):
+            del collection, filt, limit
+            self.sizes.append(len(ids or []))
+            return []
+
+    reader = Reader()
+    surface = GenericSurface(index, reader=reader)
+    groups = [node for node in surface.nodes if node["node_type"] == "group"]
+    large, bounded = groups[0], groups[1]
+    large["source"]["document_ids"] = [f"id-{i}" for i in range(MEMBER_PREFETCH_LIMIT + 1)]
+    large["search_text"] = "loan purpose purchase"
+    bounded["source"]["document_ids"] = [f"ok-{i}" for i in range(MEMBER_PREFETCH_LIMIT)]
+
+    found = surface.search_information(
+        "loan purpose purchase",
+        tenant_id=None,
+        scope=None,
+        mode="lexical",
+        limit=8,
+    )
+    assert large["_id"] in [row["node_id"] for row in found["results"]]
+    assert all(size <= MEMBER_PREFETCH_LIMIT for size in reader.sizes)
+
+    skipped = surface.retrieve_evidence(
+        [large["_id"]], tenant_id=None, query=None, max_documents=8
+    )
+    assert skipped["documents"] == []
+    assert skipped["hints"][0]["document_count"] == MEMBER_PREFETCH_LIMIT + 1
+    assert "query_documents" in skipped["hints"][0]["hint"]
+    assert all(size <= MEMBER_PREFETCH_LIMIT for size in reader.sizes)
+
+    before = len(reader.sizes)
+    surface.retrieve_evidence([bounded["_id"]], tenant_id=None, query=None, max_documents=8)
+    assert MEMBER_PREFETCH_LIMIT in reader.sizes[before:]
 
 
 def test_warehouse_absence_filter_returns_no_documents():
