@@ -7,6 +7,7 @@ database. A later ask loads the cards and finds those documents live.
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,9 @@ CARDS = "generic_cards"
 NAV_VECTORS = "generic_nav_vectors"
 ACTIVE_ID = "active"
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+_LOADED: dict[tuple, tuple] = {}
+_LOADED_LOCK = threading.Lock()
+_LOADED_MAX = 4
 
 
 class MissingGenericIndex(LookupError):
@@ -199,11 +203,51 @@ def load_generic_bundle(
     return index, dict(catalog.get("scope") or {}), bundle
 
 
+def reset_loaded_indexes() -> None:
+    with _LOADED_LOCK:
+        _LOADED.clear()
+
+
+def _contract_key(embedder: Any | None) -> tuple | None:
+    provider = usable_embedder(embedder)
+    return tuple(sorted(contract_for(provider).items())) if provider is not None else None
+
+
+def _loaded_index(
+    client: Any, embedder: Any | None
+) -> tuple[GenericIndex, dict[str, dict[str, Any]], dict[str, Any], dict[str, list[float]]]:
+    """Reuse cards and vectors while the active build and the embedding contract are unchanged.
+
+    Builds are immutable once published, so a matching build_id means the saved index is the same.
+    """
+    active = client[AGENT_DB][CATALOG].find_one({"_id": ACTIVE_ID}, {"build_id": 1})
+    if not active:
+        raise MissingGenericIndex(
+            "No generic index is saved. Run scripts/index_generic.py --database <name>."
+        )
+    contract = _contract_key(embedder)
+    build_id = str(active.get("build_id") or "")
+    with _LOADED_LOCK:
+        hit = _LOADED.get((build_id, contract)) if build_id else None
+    if hit is not None:
+        return hit
+    index, scope, bundle = load_generic_bundle(client)
+    status, vectors, _provider = _resolve_semantic(index, bundle, embedder)
+    entry = (index, scope, status, vectors)
+    if bundle["build_id"]:
+        with _LOADED_LOCK:
+            while len(_LOADED) >= _LOADED_MAX:
+                _LOADED.pop(next(iter(_LOADED)))
+            _LOADED[(bundle["build_id"], contract)] = entry
+    return entry
+
+
 def load_generic_handlers(client: Any, embedder: Any | None = None) -> ToolHandlers:
     from app.config import get_settings
 
-    index, scope, bundle = load_generic_bundle(client)
-    status, vectors, query_embedder = _resolve_semantic(index, bundle, embedder)
+    index, scope, saved_status, vectors = _loaded_index(client, embedder)
+    status = dict(saved_status)
+    query_embedder = usable_embedder(embedder) if status.get("status") == "ready" else None
     if status.get("error") and get_settings().generic_semantic_required:
         raise SemanticIndexError(str(status.get("reason") or "semantic index is unavailable"))
     reader = MongoReader(client[index.database], scope)

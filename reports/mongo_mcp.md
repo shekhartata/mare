@@ -1,6 +1,6 @@
 # MARE vs Mongo MCP
 
-- generated: 2026-10-29T13:22:22.806703+00:00
+- generated: 2026-11-10T07:27:55.478271+00:00
 - answering model: `gpt-5`
 - agent model: `gpt-5-mini`
 
@@ -8,15 +8,15 @@ Same demo questions as [README.md](README.md). **Mongo MCP** is a schema-blind a
 
 | case | MARE | MCP | RAG | MARE ms | MCP ms | RAG ms | MARE tok | MCP tok | MARE tools | MCP tools |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Simple lookup | yes | yes | yes | 19070 | 14982 | 8207 | 5013 | 4446 | 3 | 5 |
-| Named multi-hop | yes | yes | yes | 62810 | 35294 | 10576 | 24922 | 20678 | 8 | 11 |
-| Bridge (unnamed entity) | yes | no | no | 51100 | 28343 | 8279 | 26176 | 19309 | 8 | 11 |
-| Aggregation (count) | yes | no | no | 25707 | 16140 | 5523 | 6636 | 6164 | 3 | 6 |
-| Negative (absence) | yes | yes | no | 24323 | 17982 | 5817 | 8863 | 5093 | 4 | 5 |
-| Distributed evidence | yes | no | no | 43466 | 27782 | 10528 | 29031 | 18114 | 8 | 11 |
-| Variable K — small | no | no | yes | 19981 | 25187 | 7119 | 9628 | 17894 | 4 | 11 |
-| Variable K — medium | yes | no | yes | 35912 | 31369 | 9885 | 19312 | 16925 | 7 | 11 |
-| Variable K — deep | no | no | yes | 72184 | 29964 | 16643 | 42225 | 17255 | 10 | 11 |
+| Simple lookup | yes | yes | yes | 6819 | 14982 | 4034 | 4486 | 4446 | 3 | 5 |
+| Named multi-hop | yes | yes | yes | 31432 | 35294 | 13048 | 28112 | 20678 | 9 | 11 |
+| Bridge (unnamed entity) | no | no | no | 41849 | 28343 | 6122 | 32682 | 19309 | 11 | 11 |
+| Aggregation (count) | yes | no | no | 12369 | 16140 | 7260 | 4759 | 6164 | 3 | 6 |
+| Negative (absence) | yes | yes | no | 8883 | 17982 | 6812 | 5235 | 5093 | 3 | 5 |
+| Distributed evidence | no | no | no | 11896 | 27782 | 17277 | 7293 | 18114 | 3 | 11 |
+| Variable K — small | yes | no | no | 21004 | 25187 | 5960 | 11334 | 17894 | 5 | 11 |
+| Variable K — medium | yes | no | yes | 19463 | 31369 | 11806 | 8990 | 16925 | 4 | 11 |
+| Variable K — deep | yes | no | yes | 38953 | 29964 | 26145 | 29107 | 17255 | 8 | 11 |
 
 ## Answers
 

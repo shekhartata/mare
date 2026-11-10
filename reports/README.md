@@ -1,6 +1,6 @@
 # MARE vs RAG — LLM-on comparison
 
-- generated: 2026-10-29T13:22:22.806703+00:00
+- generated: 2026-11-10T07:27:55.478271+00:00
 - answering model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE modes compared: **blind** (no schema in prompt) and **informed**
@@ -24,19 +24,25 @@ MARE is built for questions Top-K cannot structurally answer, *and* that a schem
 
 The headline index metric is unchanged: **616 navigation vectors vs 5424 RAG chunks**.
 
+## Latency
+
+Same nine questions, schema-blind, against the 29 Oct run. Mean time went from **39 seconds to 21 seconds**. Mean tokens went from **19k to 15k**. Correct answers stayed **7 of 9**.
+
+The index stays in memory after the first question. Search reads fewer documents. When the agent has already cited documents it read, that answer is kept instead of paying for a second rewrite. The informed column below is the 29 Oct run. This run measured the schema-blind agent.
+
 ## Results
 
 | case | MARE blind | MARE informed | RAG | blind ms | informed ms | RAG ms |
 | --- | --- | --- | --- | --- | --- | --- |
-| [Simple lookup](simple_lookup.md) | yes | yes | yes | 19070 | 8543 | 8207 |
-| [Named multi-hop](multihop.md) | yes | yes | yes | 62810 | 34272 | 10576 |
-| [Bridge (unnamed entity)](bridge.md) | yes | yes | no | 51100 | 30376 | 8279 |
-| [Aggregation (count)](aggregation.md) | yes | yes | no | 25707 | 17081 | 5523 |
-| [Negative (absence)](negative.md) | yes | yes | no | 24323 | 12325 | 5817 |
-| [Distributed evidence](distributed.md) | yes | n/a | no | 43466 | 0 | 10528 |
-| [Variable K — small](vk_small.md) | no | n/a | yes | 19981 | 0 | 7119 |
-| [Variable K — medium](vk_medium.md) | yes | n/a | yes | 35912 | 0 | 9885 |
-| [Variable K — deep](vk_deep.md) | no | n/a | yes | 72184 | 0 | 16643 |
+| [Simple lookup](simple_lookup.md) | yes | yes | yes | 6819 | 8543 | 4034 |
+| [Named multi-hop](multihop.md) | yes | yes | yes | 31432 | 34272 | 13048 |
+| [Bridge (unnamed entity)](bridge.md) | no | yes | no | 41849 | 30376 | 6122 |
+| [Aggregation (count)](aggregation.md) | yes | yes | no | 12369 | 17081 | 7260 |
+| [Negative (absence)](negative.md) | yes | yes | no | 8883 | 12325 | 6812 |
+| [Distributed evidence](distributed.md) | no | n/a | no | 11896 | 0 | 17277 |
+| [Variable K — small](vk_small.md) | yes | n/a | no | 21004 | 0 | 5960 |
+| [Variable K — medium](vk_medium.md) | yes | n/a | yes | 19463 | 0 | 11806 |
+| [Variable K — deep](vk_deep.md) | yes | n/a | yes | 38953 | 0 | 26145 |
 
 Full machine-readable dump: [comparison.json](comparison.json).
 
@@ -58,10 +64,10 @@ Gold evidence recall is scored on **retrieved document ids**, not answer citatio
 
 | case | MARE gold recall | RAG hybrid_10 recall | MARE docs | RAG docs | MARE complete | RAG complete |
 | --- | --- | --- | --- | --- | --- | --- |
-| [Distributed (B1)](distributed.md) | 0.75 | 0.25 | 25 | 10 | 4/4 | 3/4 |
-| [Variable K — small](vk_small.md) | 0.5 | 1.0 | 5 | 10 | 1/2 | 2/2 |
-| [Variable K — medium](vk_medium.md) | 0.286 | 0.857 | 7 | 10 | 3/3 | 3/3 |
-| [Variable K — deep](vk_deep.md) | 0.389 | 0.5 | 31 | 10 | 1/4 | 4/4 |
+| [Distributed (B1)](distributed.md) | 0.25 | 0.25 | 10 | 10 | 2/4 | 3/4 |
+| [Variable K — small](vk_small.md) | 0.5 | 1.0 | 5 | 10 | 2/2 | 1/2 |
+| [Variable K — medium](vk_medium.md) | 0.286 | 0.857 | 12 | 10 | 3/3 | 3/3 |
+| [Variable K — deep](vk_deep.md) | 0.444 | 0.5 | 37 | 10 | 4/4 | 4/4 |
 
 RAG Top-K sweep on the deep Apex question:
 
@@ -69,20 +75,20 @@ RAG Top-K sweep on the deep Apex question:
 | --- | --- | --- | --- | --- |
 | hybrid_10 | yes | 0.5 | 10 | 4/4 |
 | hybrid_20 | yes | 0.889 | 20 | 4/4 |
-| hybrid_5 | yes | 0.278 | 5 | 4/4 |
+| hybrid_5 | yes | 0.222 | 5 | 4/4 |
 | vector_10 | yes | 0.5 | 10 | 4/4 |
 
 ## What happened on this run
 
-- **Simple lookup:** Blind MARE yes (19070ms, stop=completed). Informed yes (8543ms). RAG yes (8207ms).
-- **Named multi-hop:** Blind MARE yes (62810ms, stop=completed). Informed yes (34272ms). RAG yes (10576ms).
-- **Bridge (unnamed entity):** Blind MARE yes (51100ms, stop=completed). Informed yes (30376ms). RAG no (8279ms). entity=yes cause=yes.
-- **Aggregation (count):** Blind MARE yes (25707ms, stop=completed). Informed yes (17081ms). RAG no (5523ms).
-- **Negative (absence):** Blind MARE yes (24323ms, stop=completed). Informed yes (12325ms). RAG no (5817ms).
-- **Distributed evidence:** Blind MARE yes (43466ms, stop=completed). RAG no (10528ms). entity=yes cause=yes.
-- **Variable K — small:** Blind MARE no (19981ms, stop=completed). RAG yes (7119ms). entity=no cause=yes.
-- **Variable K — medium:** Blind MARE yes (35912ms, stop=completed). RAG yes (9885ms). entity=yes cause=yes.
-- **Variable K — deep:** Blind MARE no (72184ms, stop=completed). RAG yes (16643ms). entity=no cause=no.
+- **Simple lookup:** Blind MARE yes (6819ms, stop=completed). Informed yes (8543ms). RAG yes (4034ms).
+- **Named multi-hop:** Blind MARE yes (31432ms, stop=completed). Informed yes (34272ms). RAG yes (13048ms).
+- **Bridge (unnamed entity):** Blind MARE no (41849ms, stop=max_agent_turns). Informed yes (30376ms). RAG no (6122ms). entity=yes cause=no.
+- **Aggregation (count):** Blind MARE yes (12369ms, stop=completed). Informed yes (17081ms). RAG no (7260ms).
+- **Negative (absence):** Blind MARE yes (8883ms, stop=completed). Informed yes (12325ms). RAG no (6812ms).
+- **Distributed evidence:** Blind MARE no (11896ms, stop=completed). RAG no (17277ms). entity=no cause=yes.
+- **Variable K — small:** Blind MARE yes (21004ms, stop=completed). RAG no (5960ms). entity=yes cause=yes.
+- **Variable K — medium:** Blind MARE yes (19463ms, stop=completed). RAG yes (11806ms). entity=yes cause=yes.
+- **Variable K — deep:** Blind MARE yes (38953ms, stop=completed). RAG yes (26145ms). entity=yes cause=yes.
 
 ## How to rerun
 

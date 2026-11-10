@@ -1,6 +1,6 @@
 # Distributed evidence — Northstar identity cutover
 
-- generated: 2026-10-29T13:27:31.443520+00:00
+- generated: 2026-11-10T07:31:14.672553+00:00
 - answer model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE mode: **blind** (schema_in_prompt=false)
@@ -23,25 +23,25 @@ Northstar Payments (cust_012) kept the previous authentication configuration aft
 
 | metric | MARE (blind) | Conventional RAG |
 | --- | --- | --- |
-| end-to-end latency | **43466 ms** | **10528 ms** |
-| agent turns | 9 | n/a |
-| tool calls | 8 | n/a |
-| LLM latency | 34950 ms | n/a |
-| Mongo latency | 6506 ms | n/a |
-| retrieval operations | 5 | 1 |
-| LLM tokens | 29031 | 2465 |
+| end-to-end latency | **11896 ms** | **17277 ms** |
+| agent turns | 3 | n/a |
+| tool calls | 3 | n/a |
+| LLM latency | 10252 ms | n/a |
+| Mongo latency | 1166 ms | n/a |
+| retrieval operations | 1 | 1 |
+| LLM tokens | 7293 | 3221 |
 | stop reason | completed | rag_topk |
-| answer correct | yes | no |
-| entity found | yes | yes |
+| answer correct | no | no |
+| entity found | no | yes |
 | root cause found | yes | no |
-| evidence recall vs gold (citations) | 0.75 | 0.25 |
-| evidence precision vs gold | 0.12 | 0.1 |
-| gold evidence recall (retrieved) | 0.75 | 0.25 |
-| documents retrieved | 25 | 10 |
+| evidence recall vs gold (citations) | 0.25 | 0.25 |
+| evidence precision vs gold | 0.1 | 0.1 |
+| gold evidence recall (retrieved) | 0.25 | 0.25 |
+| documents retrieved | 10 | 10 |
 | required evidence | 4 | 4 |
-| context efficiency | 0.142 | 0.118 |
-| completeness groups | 4/4 | 3/4 |
-| gold missed | tickets:tkt_ns_login | deployments:dep_ns_stale, logs:log_ns_jwt, migrations:mig_ns_identity |
+| context efficiency | 0.094 | 0.118 |
+| completeness groups | 2/4 | 3/4 |
+| gold missed | deployments:dep_ns_stale, logs:log_ns_jwt, tickets:tkt_ns_login | deployments:dep_ns_stale, logs:log_ns_jwt, migrations:mig_ns_identity |
 
 Persistent vector indexes (not per-query scan count): MARE searches the 616-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
 
@@ -49,75 +49,64 @@ Persistent vector indexes (not per-query scan count): MARE searches the 616-node
 
 | variant | correct | gold recall | docs retrieved | completeness | ms |
 | --- | --- | --- | --- | --- | --- |
-| hybrid_10 | no | 0.25 | 10 | 3/4 | 10528 |
-| hybrid_20 | yes | 1.0 | 20 | 4/4 | 8188 |
-| hybrid_5 | no | 0.25 | 5 | 3/4 | 8451 |
-| vector_10 | no | 0.25 | 10 | 2/4 | 14231 |
+| hybrid_10 | no | 0.25 | 10 | 3/4 | 17277 |
+| hybrid_20 | yes | 1.0 | 20 | 4/4 | 8036 |
+| hybrid_5 | no | 0.25 | 5 | 3/4 | 9960 |
+| vector_10 | no | 0.25 | 10 | 3/4 | 12539 |
 
 ### RAG answers by variant
 
 **hybrid_10**
 
-Northstar’s logins started failing intermittently because the platform’s SSO issuer was cut over from https://auth-v2.apex.io to https://auth-v3.apex.io, but some components were still using the old AUTH_ISSUER. That issuer mismatch causes 401s, matching the post-change timing and symptoms. Similar incidents identify the root cause as a stale AUTH_ISSUER after the SSO migration, with logs showing “expected … v3, got … v2.” [tkt_ns_login] [mig_auth_sso] [inc_1001] [log_1001]
+Because the platform’s SSO issuer was changed during the recent upgrade, any clients/services still configured with the old AUTH_ISSUER started failing token validation. Similar post-migration incidents were traced to a stale AUTH_ISSUER still pointing at https://auth-v2.apex.io after the cutover to https://auth-v3.apex.io, producing issuer-mismatch 401s; Northstar’s timing and symptoms align with this change ([tkt_ns_login], [mig_auth_sso], [inc_1001], [log_1001]).
 
 **hybrid_20**
 
-Because the identity cutover changed Northstar’s OIDC issuer URL, but the June 4 rollout left some auth-service instances running with the previous auth configuration. That stale config caused issuer mismatches during token validation, so logins would pass or fail depending on which instance handled the request, producing intermittent failures. [mig_ns_identity], [dep_ns_stale], [log_ns_jwt], [tkt_ns_login]
+Because the identity cutover changed Northstar’s OIDC issuer, but the subsequent auth-service rollout kept the old authentication configuration, requests hit mixed configs and JWT validation failed with an issuer mismatch. That stale runtime config caused intermittent sign‑ins to be rejected after the platform work. [mig_ns_identity], [dep_ns_stale], [log_ns_jwt], [tkt_ns_login]
 
 **hybrid_5**
 
-Because the SSO cutover changed the authentication issuer, but some components still had a stale AUTH_ISSUER pointing to the old issuer (auth‑v2). That mismatch caused token validation to fail with “unauthorized issuer,” leading to the intermittent sign-in failures Northstar reported after the platform work. [tkt_ns_login], [inc_1001], [dep_apex_fail_1]
+Because the SSO migration changed the authentication issuer, but some services kept a stale AUTH_ISSUER pointing to the old auth-v2. That mismatch causes token validation to fail intermittently (“unauthorized issuer”), matching Northstar’s post-change login issues. [tkt_ns_login] [inc_1001] [dep_apex_fail_1]
 
 **vector_10**
 
-Because the SSO issuer was changed during the recent platform upgrade, any client/service still configured with the old AUTH_ISSUER intermittently fails token validation. After the cutover from https://auth-v2.apex.io to https://auth-v3.apex.io, stale configs trigger 401 “issuer mismatch” errors, which explains the come-and-go sign‑in failures when traffic hits mixed/partially updated components [mig_auth_sso], [inc_1001], [log_1001], [dep_apex_fail_1].
+Because the SSO issuer changed during the recent platform work and any clients still pointing at the old issuer began having their tokens rejected. The migration required updating AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io; incidents right after the cutover traced failures to a stale AUTH_ISSUER and “jwt issuer mismatch” 401s. Northstar’s intermittent login problems started immediately after that work, consistent with some components still using the old issuer. [tkt_ns_login], [mig_auth_sso], [inc_1001], [log_1001]
 
 ## MARE answer (blind)
 
-Northstar’s identity platform was cut over from identity-2.1 to identity-3.0, which changed the OIDC issuer to https://id.northstar.test/realms/prod (config_changes.OIDC_ISSUER: https://id.northstar.test/realms/prod; notes: “Update relying parties before the next release.”) (mare_demo.migrations:mig_ns_identity). After the cutover, the auth-service began rejecting tokens with “token validation rejected because issuer did not match expected value,” indicating at least one relying party was still configured with the old issuer (service: auth-service, deployment_id: dep_ns_stale) (mare_demo.logs:log_ns_jwt).
+Entity: Apex Logistics (customer_id: cust_007)
+
+Why it started: The identity/SSO cutover changed the expected token issuer. A migration (mig_auth_sso) updated AUTH_ISSUER to https://auth-v3.apex.io and notes that the legacy issuer will reject tokens. Apex’s production deploys began failing with AUTH_401 immediately after that SSO migration (ticket tkt_1001). In short, clients that did not update their AUTH_ISSUER to the new v3 issuer had tokens rejected, causing the intermittent authentication failures.
 
 ### Hypothesis
 
-_(none)_
+Apex services were still using the old AUTH_ISSUER (https://auth-v2.apex.io) after the platform cutover, so some tokens were rejected by the new identity provider, producing AUTH_401 errors.
 
 ### Claims
 
-_(none)_
+- `c1` **supported** (0.90): The platform SSO endpoint was changed and AUTH_ISSUER was updated to https://auth-v3.apex.io.
+- `c2` **supported** (0.92): Apex began seeing AUTH_401 failures after that SSO migration.
+- `c3` **supported** (0.88): Clients still using the legacy issuer would have their tokens rejected, causing intermittent auth failures.
 
 ### Citations
 
-- `mare_demo.migrations:mig_ns_identity`
-- `mare_demo.logs:log_ns_jwt`
-- `mare_demo.deployments:dep_ns_stale`
-- `mare_demo.customers:cust_012`
-- `mare_demo.incidents:inc_20017`
-- `mare_demo.incidents:inc_20030`
-- `mare_demo.incidents:inc_20054`
-- `mare_demo.incidents:inc_2001`
-- `mare_demo.incidents:inc_20089`
-- `mare_demo.incidents:inc_20123`
+- `mare_demo.migrations:mig_auth_sso`
+- `mare_demo.tickets:tkt_1001`
 - `mare_demo.migrations:mig_bill_wh`
-- `mare_demo.migrations:mig_n_010`
-- `mare_demo.logs:log_n_02628`
-- `mare_demo.logs:log_n_03967`
-- `mare_demo.logs:log_n_02616`
-- `mare_demo.logs:log_n_00408`
-- `mare_demo.logs:log_n_01417`
-- `mare_demo.logs:log_n_03835`
-- `mare_demo.logs:log_n_03825`
-- `mare_demo.logs:log_n_01580`
-- `mare_demo.deployments:dep_n_0100`
-- `mare_demo.deployments:dep_n_0262`
-- `mare_demo.deployments:dep_n_0250`
-- `mare_demo.deployments:dep_ns_bill_1`
-- `mare_demo.deployments:dep_n_0134`
+- `mare_demo.migrations:mig_ns_identity`
+- `mare_demo.migrations:mig_region_eu`
+- `mare_demo.migrations:mig_aws_gcp`
+- `mare_demo.migrations:mig_catalog_v4`
+- `mare_demo.tickets:tkt_apex_mar`
+- `mare_demo.tickets:tkt_apex_apr`
+- `mare_demo.tickets:tkt_2001`
 
-Gold hits: deployments:dep_ns_stale, logs:log_ns_jwt, migrations:mig_ns_identity
-Missed gold: tickets:tkt_ns_login
+Gold hits: migrations:mig_ns_identity
+Missed gold: deployments:dep_ns_stale, logs:log_ns_jwt, tickets:tkt_ns_login
 
 ## RAG answer
 
-Northstar’s logins started failing intermittently because the platform’s SSO issuer was cut over from https://auth-v2.apex.io to https://auth-v3.apex.io, but some components were still using the old AUTH_ISSUER. That issuer mismatch causes 401s, matching the post-change timing and symptoms. Similar incidents identify the root cause as a stale AUTH_ISSUER after the SSO migration, with logs showing “expected … v3, got … v2.” [tkt_ns_login] [mig_auth_sso] [inc_1001] [log_1001]
+Because the platform’s SSO issuer was changed during the recent upgrade, any clients/services still configured with the old AUTH_ISSUER started failing token validation. Similar post-migration incidents were traced to a stale AUTH_ISSUER still pointing at https://auth-v2.apex.io after the cutover to https://auth-v3.apex.io, producing issuer-mismatch 401s; Northstar’s timing and symptoms align with this change ([tkt_ns_login], [mig_auth_sso], [inc_1001], [log_1001]).
 
 ### Citations
 

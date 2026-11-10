@@ -1,6 +1,6 @@
 # Named multi-hop — Apex Logistics SSO failure
 
-- generated: 2026-10-29T13:24:03.917178+00:00
+- generated: 2026-11-10T07:28:51.101008+00:00
 - answer model: `gpt-5`
 - agent model: `gpt-5-mini` (reasoning_effort=low)
 - MARE mode: **blind** (schema_in_prompt=false)
@@ -23,41 +23,48 @@ Apex Logistics (cust_007) began failing production deployments after migration m
 
 | metric | MARE (blind) | Conventional RAG |
 | --- | --- | --- |
-| end-to-end latency | **62810 ms** | **10576 ms** |
+| end-to-end latency | **31432 ms** | **13048 ms** |
 | agent turns | 9 | n/a |
-| tool calls | 8 | n/a |
-| LLM latency | 49711 ms | n/a |
-| Mongo latency | 7845 ms | n/a |
-| retrieval operations | 4 | 1 |
-| LLM tokens | 24922 | 1897 |
+| tool calls | 9 | n/a |
+| LLM latency | 27068 ms | n/a |
+| Mongo latency | 3218 ms | n/a |
+| retrieval operations | 5 | 1 |
+| LLM tokens | 28112 | 1990 |
 | stop reason | completed | rag_topk |
 | answer correct | yes | yes |
-| evidence recall vs gold (citations) | 0.5 | 0.625 |
-| evidence precision vs gold | 0.211 | 0.625 |
-| gold evidence recall (retrieved) | 0.5 | 0.625 |
-| documents retrieved | 19 | 8 |
+| evidence recall vs gold (citations) | 0.625 | 0.625 |
+| evidence precision vs gold | 0.192 | 0.625 |
+| gold evidence recall (retrieved) | 0.625 | 0.625 |
+| documents retrieved | 26 | 8 |
 | required evidence | 8 | 8 |
-| context efficiency | 0.236 | 0.656 |
+| context efficiency | 0.206 | 0.656 |
 | completeness groups | 0/0 | 0/0 |
-| gold missed | deployments:dep_apex_fail_2, logs:log_1001, logs:log_1002, tickets:tkt_1001 | customers:cust_007, logs:log_1001, logs:log_1002 |
+| gold missed | customers:cust_007, logs:log_1002, tickets:tkt_1001 | customers:cust_007, logs:log_1001, logs:log_1002 |
 
 Persistent vector indexes (not per-query scan count): MARE searches the 616-node navigation index, then reads raw Mongo documents. RAG searches the 5424-chunk vector index and returns Top-K.
 
 ## MARE answer (blind)
 
-Most likely root cause
-Apex Logistics’ deployments began failing because the SSO migration changed the required AUTH_ISSUER to https://auth-v3.apex.io and the legacy issuer would reject tokens, but the customer remained configured on the v2 issuer, creating an issuer mismatch that led to 401 “unauthorized issuer” errors during auth-service deployments.
+Customer: Apex Logistics (cust_007)
 
-Supporting evidence
-- The migration explicitly changed AUTH_ISSUER and warned that the legacy issuer would reject tokens: notes: “SSO endpoint changed. Clients MUST update AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io. Legacy issuer will reject tokens.” and config_changes.AUTH_ISSUER: https://auth-v3.apex.io (mare_demo.migrations:mig_auth_sso).
-- Apex Logistics is still configured with sso_issuer: https://auth-v2.apex.io (mare_demo.customers:cust_007).
-- A post-migration production deployment failed in auth-service with error_code: AUTH_401 and logs_excerpt: “token validation failed: unauthorized issuer”; it’s tied to migration_id: mig_auth_sso and occurred after the migration completed (started_at: 2024-05-11T09:15:00 vs. migration completed_at: 2024-05-10T11:30:00) (mare_demo.deployments:dep_apex_fail_1; mare_demo.migrations:mig_auth_sso).
-- The active incident documents the same root cause: root_cause: “stale AUTH_ISSUER still pointing at auth-v2 after SSO issuer cutover,” with title “Auth failures post SSO migration” (mare_demo.incidents:inc_1001).
+Why failures began after migration
+- Most likely root cause: The mig_auth_sso migration updated the cluster’s AUTH_ISSUER to https://auth-v3.apex.io, but Apex Logistics’ services (or their tokens) were still using the legacy issuer (https://auth-v2.apex.io). As a result, token validation began failing and deployments that exercise authentication started returning 401s, causing rollout failures.
 
-Assessment of the draft claims
-- C1 supported: Migration changed AUTH_ISSUER to https://auth-v3.apex.io and noted legacy issuer will reject tokens (mare_demo.migrations:mig_auth_sso).
-- C2 supported: Apex Logistics is still on https://auth-v2.apex.io (mare_demo.customers:cust_007).
-- C3 supported: Deployment failures show AUTH_401 “unauthorized issuer,” and the incident records the issuer mismatch as root cause (mare_demo.deployments:dep_apex_fail_1; mare_demo.incidents:inc_1001).
+Evidence supporting this conclusion
+1) Migration record shows an SSO issuer change and explicit note that the legacy issuer will reject tokens and clients MUST update AUTH_ISSUER:
+   - mare_demo.migrations:mig_auth_sso — notes: “SSO endpoint changed. Clients MUST update AUTH_ISSUER from https://auth-v2.apex.io to https://auth-v3.apex.io. Legacy issuer will reject tokens.” and config_changes.AUTH_ISSUER: https://auth-v3.apex.io
+2) Deployments immediately after the migration failed with authentication errors and 401 codes referencing token/issuer problems:
+   - mare_demo.deployments:dep_apex_fail_1 — status: failed; migration_id: mig_auth_sso; error_code: AUTH_401; logs_excerpt: “token validation failed: unauthorized issuer” (2024-05-11)
+   - mare_demo.deployments:dep_apex_fail_2 — status: failed; migration_id: mig_auth_sso; error_code: AUTH_401; logs_excerpt: “auth-service returned 401 during rollout” (2024-05-12)
+3) Prior to the migration, deployments for this customer were succeeding (showing the problem appeared after migration):
+   - mare_demo.deployments:dep_n_0119 — status: success (2024-02-12)
+   - mare_demo.deployments:dep_n_0045 — status: success (2024-01-25)
+
+Confidence: high — migration explicitly changed AUTH_ISSUER and the failed deployments cite token validation / 401 unauthorized issuer immediately following the migration.
+
+If you’d like, I can:
+- Search logs/tickets for evidence that Apex updated (or failed to update) their AUTH_ISSUER config, or
+- Identify which services in their stack are still using the legacy issuer so you can contact the customer with exact remediation steps.
 
 ### Hypothesis
 
@@ -65,46 +72,50 @@ _(none)_
 
 ### Claims
 
-- `C1` **supported** (0.90): Migration mig_auth_sso changed AUTH_ISSUER to https://auth-v3.apex.io and noted legacy issuer will reject tokens.
-- `C2` **supported** (0.90): Apex Logistics (cust_007) is still configured to use sso_issuer https://auth-v2.apex.io.
-- `C3` **partially_supported** (0.85): The mismatch caused token rejection and deployment/auth failures after migration.
+_(none)_
 
 ### Citations
 
-- `mare_demo.customers:cust_007`
 - `mare_demo.migrations:mig_auth_sso`
-- `mare_demo.migrations:mig_catalog_v4`
-- `mare_demo.migrations:mig_n_003`
-- `mare_demo.migrations:mig_n_005`
-- `mare_demo.migrations:mig_n_012`
-- `mare_demo.migrations:mig_n_016`
+- `mare_demo.deployments:dep_n_0045`
+- `mare_demo.deployments:dep_n_0119`
 - `mare_demo.deployments:dep_apex_fail_1`
-- `mare_demo.deployments:dep_ns_bill_1`
-- `mare_demo.deployments:dep_ns_stale`
-- `mare_demo.deployments:dep_cascade_pool`
-- `mare_demo.deployments:dep_n_0001`
-- `mare_demo.deployments:dep_n_0003`
+- `mare_demo.deployments:dep_apex_fail_2`
+- `mare_demo.deployments:dep_n_0355`
+- `mare_demo.deployments:dep_apex_mar`
+- `mare_demo.deployments:dep_apex_apr`
+- `mare_demo.deployments:dep_n_0374`
 - `mare_demo.incidents:inc_1001`
-- `mare_demo.incidents:inc_4001`
-- `mare_demo.incidents:inc_20008`
-- `mare_demo.incidents:inc_20012`
-- `mare_demo.incidents:inc_20016`
-- `mare_demo.incidents:inc_20020`
+- `mare_demo.incidents:inc_apex_mar`
+- `mare_demo.incidents:inc_apex_apr`
+- `mare_demo.incidents:inc_20026`
+- `mare_demo.incidents:inc_20074`
+- `mare_demo.logs:log_n_02332`
+- `mare_demo.logs:log_n_00383`
+- `mare_demo.logs:log_n_03603`
+- `mare_demo.logs:log_n_02508`
+- `mare_demo.logs:log_n_03650`
+- `mare_demo.logs:log_1001`
+- `mare_demo.tickets:tkt_20013`
+- `mare_demo.tickets:tkt_20517`
+- `mare_demo.tickets:tkt_20510`
+- `mare_demo.tickets:tkt_20666`
+- `mare_demo.tickets:tkt_apex_mar`
+- `mare_demo.tickets:tkt_20721`
 
-Gold hits: customers:cust_007, deployments:dep_apex_fail_1, incidents:inc_1001, migrations:mig_auth_sso
-Missed gold: deployments:dep_apex_fail_2, logs:log_1001, logs:log_1002, tickets:tkt_1001
+Gold hits: deployments:dep_apex_fail_1, deployments:dep_apex_fail_2, incidents:inc_1001, logs:log_1001, migrations:mig_auth_sso
+Missed gold: customers:cust_007, logs:log_1002, tickets:tkt_1001
 
 ## RAG answer
 
 Most likely root cause
-Apex’s deployer kept a stale AUTH_ISSUER pointing to auth-v2 after the SSO cutover to auth-v3, causing token validation to fail during deployments.
+- After mig_auth_sso changed the SSO issuer to auth-v3, Apex’s deployer/services kept a stale AUTH_ISSUER still pointing to auth-v2, causing token validation to fail. [inc_1001], [mig_auth_sso]
 
 Evidence
-- Migration required changing AUTH_ISSUER to https://auth-v3.apex.io; legacy issuer would reject tokens (mig_auth_sso).
-- Incident identifies root cause as “stale AUTH_ISSUER still pointing at auth-v2 after SSO issuer cutover” (inc_1001).
-- Failed deployment log shows “token validation failed: unauthorized issuer” on the auth-service (dep_apex_fail_1).
-- Subsequent prod deployment returned AUTH_401 during rollout (dep_apex_fail_2).
-- Ticket reports deploy failures with AUTH_401 starting right after the SSO migration (tkt_1001).
+- Migration notes require updating AUTH_ISSUER to https://auth-v3.apex.io and warn that the legacy issuer will reject tokens. [mig_auth_sso]
+- Both post-migration prod deployments failed with AUTH_401; one explicitly logs “token validation failed: unauthorized issuer,” consistent with an issuer mismatch. [dep_apex_fail_1], [dep_apex_fail_2]
+- The customer ticket reports failures began right after the SSO migration with AUTH_401 errors. [tkt_1001]
+- The incident tracks the root cause as “stale AUTH_ISSUER still pointing at auth-v2 after SSO issuer cutover.” [inc_1001]
 
 ### Citations
 

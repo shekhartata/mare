@@ -15,6 +15,7 @@ from app.indexing.signals.store import (
     load_generic_handlers,
     load_generic_index,
     read_source,
+    reset_loaded_indexes,
     save_generic_index,
     saved_index_summary,
 )
@@ -61,9 +62,10 @@ class _Collection:
         self.docs = list(docs or [])
 
     def find(self, query: dict | None = None) -> _Cursor:
+        self.finds = getattr(self, "finds", 0) + 1
         return _Cursor([doc for doc in self.docs if _doc_matches(doc, query)])
 
-    def find_one(self, query: dict) -> dict | None:
+    def find_one(self, query: dict, projection: dict | None = None) -> dict | None:
         for doc in self.docs:
             if _doc_matches(doc, query):
                 return doc
@@ -108,6 +110,7 @@ class _Client:
 
 def setup_function() -> None:
     reset_index_state()
+    reset_loaded_indexes()
 
 
 def test_saved_index_answers_from_a_second_load():

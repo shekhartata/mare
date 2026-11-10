@@ -45,6 +45,17 @@ FORCE_SUBMIT = (
     "evidence already retrieved. Do not call any other tool. If evidence is "
     "incomplete, say so in the answer."
 )
+STALL_SUBMIT = (
+    "The last two tool turns returned no new documents or nodes. Call submit_answer now "
+    "using the evidence already retrieved. Do not call any other tool. If evidence is "
+    "incomplete, say so in the answer."
+)
+REPEAT_NOTE = (
+    "Every document here was already returned earlier in this ask. If the evidence "
+    "answers the question, call submit_answer."
+)
+STALL_TURNS = 2
+_PROBE_TOOLS = frozenset({"query_documents", "find", "count"})
 BLIND_SYSTEM_PROMPT = (
     "You are MARE, a MongoDB adaptive retrieval agent.\n\n"
     "You do not know the databases, collections, or field names in advance. "
@@ -115,6 +126,7 @@ def run_agent(
     acgc_client: Any | None = None,
     tool_surface: str | None = None,
     parallel_tools: str | None = None,
+    synthesis: str | None = None,
 ) -> EvidenceSession:
     """Run the tool loop. Receipts compact by default; ACGC sidecar only if use_acgc / MARE_ACGC."""
     settings = get_settings()
@@ -140,9 +152,9 @@ def run_agent(
         handlers = handlers or mcp_handlers()
     else:
         handlers = handlers or default_handlers()
-    asked = getattr(handlers, "surface", None)
-    if asked is not None:
-        asked.question = question
+    begin_ask = getattr(getattr(handlers, "surface", None), "begin_ask", None)
+    if begin_ask is not None:
+        begin_ask(question)
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
     acgc_on = settings.acgc_enabled if use_acgc is None else bool(use_acgc)
     compact_on = (
@@ -204,6 +216,7 @@ def run_agent(
             token_budget=settings.acgc_token_budget,
             tool_defs=tool_defs,
             parallel_tools=parallel_tools,
+            synthesis=(synthesis or settings.synthesis or "auto").strip().lower(),
         )
     finally:
         if sidecar is not None:
@@ -235,6 +248,7 @@ def _tool_loop(
     token_budget: int,
     tool_defs: list[dict[str, Any]],
     parallel_tools: str | None = None,
+    synthesis: str = "auto",
 ) -> EvidenceSession:
     settings = get_settings()
     gathered: list[RetrievedDocument] = []
@@ -244,6 +258,8 @@ def _tool_loop(
     gate = {"pending": False, "bounced": False}
     mode = _parallel_mode(parallel_tools, settings.parallel_tools)
     session.tool_stats = {"mode": mode, "turns": []}
+    evidence: dict[str, Any] = {"seen": set(), "probes": set(), "turn": []}
+    stalled = 0
     forced = False
     step = 0
     status = SessionStatus.complete
@@ -264,6 +280,10 @@ def _tool_loop(
             forced = True
             status = SessionStatus.budget_exhausted
             stop_reason = _budget_reason(session.agent_turns, max_turns)
+        elif stalled >= STALL_TURNS and submitted is None and not forced and reads[0]:
+            messages.append({"role": "user", "content": STALL_SUBMIT})
+            forced = True
+            stop_reason = "no_new_evidence"
 
         if compact_on and any(m.get("role") == "tool" for m in messages):
             pre = estimate_tokens(messages)
@@ -375,7 +395,13 @@ def _tool_loop(
                         "role": "tool",
                         "tool_call_id": tc.get("id"),
                         "content": json.dumps(
-                            {"error": "Budget exhausted. Only submit_answer is allowed."}
+                            {
+                                "error": (
+                                    "No new evidence. Only submit_answer is allowed."
+                                    if stop_reason == "no_new_evidence"
+                                    else "Budget exhausted. Only submit_answer is allowed."
+                                )
+                            }
                         ),
                     }
                 )
@@ -392,6 +418,7 @@ def _tool_loop(
                 _record_step(session, kind="tool", name=SUBMIT_TOOL, ms=0, reason="forced")
             break
 
+        evidence["turn"] = []
         if mode == "on":
             turn_submit, step = _run_parallel_turn(
                 tool_calls=tool_calls,
@@ -409,6 +436,7 @@ def _tool_loop(
                 cap=max(1, int(settings.parallel_tools_cap)),
                 reads=reads,
                 gate=gate,
+                evidence=evidence,
             )
         else:
             if mode == "shadow":
@@ -477,7 +505,13 @@ def _tool_loop(
                     step=step,
                     sidecar=sidecar,
                     reads=reads,
+                    evidence=evidence,
                 )
+        outcomes = evidence["turn"]
+        if "new" in outcomes:
+            stalled = 0
+        elif "repeat" in outcomes:
+            stalled += 1
         if turn_submit is not None:
             submitted = turn_submit
             status = SessionStatus.complete
@@ -503,7 +537,16 @@ def _tool_loop(
 
     answer = str(draft.get("answer") or "").strip()
     citations = _citations_from_docs(gathered)
-    needs_synthesis = agent_model != answer_model and bool(gathered)
+    cited_ids = [str(x) for x in (draft.get("cited_source_ids") or []) if x]
+    grounded = (
+        synthesis == "auto"
+        and bool(answer)
+        and status == SessionStatus.complete
+        and _all_cited_were_read(cited_ids, gathered)
+    )
+    needs_synthesis = agent_model != answer_model and bool(gathered) and not grounded
+    if agent_model != answer_model and bool(gathered) and grounded:
+        session.tool_stats = {**(session.tool_stats or {}), "synthesis": "skipped_grounded"}
     reasoner = answer_reasoner
     if needs_synthesis and reasoner is None and settings.openai_api_key:
         reasoner = OpenAIReasoningModel(
@@ -540,7 +583,6 @@ def _tool_loop(
             status = SessionStatus.insufficient_evidence
             stop_reason = "no_answer"
 
-    cited_ids = [str(x) for x in (draft.get("cited_source_ids") or []) if x]
     if cited_ids:
         citations = _prefer_cited(citations, cited_ids) or citations
 
@@ -655,7 +697,14 @@ def _step_detail(handlers: dict[str, Any], result: dict[str, Any]) -> dict[str, 
         surface.last_timing = {}
     detail = {
         key: timing[key]
-        for key in ("embed_ms", "fetch_ms", "fetch_docs", "fetch_ids")
+        for key in (
+            "embed_ms",
+            "fetch_ms",
+            "fetch_docs",
+            "fetch_ids",
+            "fetch_calls",
+            "fetch_max_ms",
+        )
         if key in timing
     }
     error = result.get("error")
@@ -717,6 +766,7 @@ def _execute_and_record(
     mongo_ms: float | None = None,
     reads: list[int] | None = None,
     count_read: bool | None = None,
+    evidence: dict[str, Any] | None = None,
 ) -> tuple[int, float]:
     dispatched = result is None
     if result is None:
@@ -747,6 +797,11 @@ def _execute_and_record(
         session.retrieval_count += 1
     gathered.extend(_docs_from_tool_result(result))
     absorb(ledger, result)
+    if evidence is not None:
+        outcome = _evidence_outcome(name, args, result, evidence)
+        evidence["turn"].append(outcome)
+        if outcome == "repeat" and result.get("documents"):
+            result = {**result, "note": REPEAT_NOTE}
     payload = json.dumps(result, default=str)
     if len(payload) > 24_000:
         payload = payload[:24_000] + "…(truncated)"
@@ -768,6 +823,34 @@ def _execute_and_record(
     return step, mongo_ms
 
 
+def _evidence_outcome(
+    name: str, args: dict[str, Any], result: dict[str, Any], evidence: dict[str, Any]
+) -> str:
+    """new: a document, node, or first-time empty probe; repeat: nothing new; error: failed."""
+    if result.get("error"):
+        return "error"
+    keys: set[str] = set()
+    for doc in result.get("documents") or []:
+        ref = (doc.get("ref") if isinstance(doc, dict) else None) or {}
+        if ref.get("document_id"):
+            keys.add(f"doc:{ref.get('collection')}:{ref.get('document_id')}")
+    for field in ("results", "related_nodes"):
+        for node in result.get(field) or []:
+            if isinstance(node, dict) and node.get("node_id"):
+                keys.add(f"node:{node['node_id']}")
+    seen: set[str] = evidence["seen"]
+    fresh = bool(keys - seen)
+    seen |= keys
+    if fresh:
+        return "new"
+    if name in _PROBE_TOOLS and not result.get("documents"):
+        probe = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
+        if probe not in evidence["probes"]:
+            evidence["probes"].add(probe)
+            return "new"
+    return "repeat"
+
+
 def _run_parallel_turn(
     *,
     tool_calls: list[dict[str, Any]],
@@ -785,6 +868,7 @@ def _run_parallel_turn(
     cap: int,
     reads: list[int],
     gate: dict[str, bool],
+    evidence: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, int]:
     planned = plan_calls(tool_calls, handlers, ledger, cap=cap)
     has_read = any(call.name != SUBMIT_TOOL for call in planned)
@@ -843,6 +927,7 @@ def _run_parallel_turn(
                 mongo_ms=0,
                 reads=reads,
                 count_read=False,
+                evidence=evidence,
             )
             summed += elapsed
         if not runnable:
@@ -880,6 +965,7 @@ def _run_parallel_turn(
                     mongo_ms=elapsed,
                     reads=reads,
                     count_read=True,
+                    evidence=evidence,
                 )
                 summed += elapsed
             continue
@@ -901,6 +987,7 @@ def _run_parallel_turn(
                 step=step,
                 sidecar=sidecar,
                 reads=reads,
+                evidence=evidence,
             )
             summed += elapsed
     _append_tool_stats(
@@ -982,6 +1069,24 @@ def _citations_from_docs(docs: list[RetrievedDocument]) -> list[MongoRef]:
         seen.add(key)
         out.append(d.ref)
     return out
+
+
+def _ref_keys(ref: MongoRef) -> set[str]:
+    return {
+        f"{ref.database}.{ref.collection}:{ref.document_id}".lower(),
+        f"{ref.collection}:{ref.document_id}".lower(),
+        str(ref.document_id).lower(),
+    }
+
+
+def _all_cited_were_read(cited_ids: list[str], gathered: list[RetrievedDocument]) -> bool:
+    if not cited_ids:
+        return False
+    read: set[str] = set()
+    for doc in gathered:
+        if doc.ref.document_id and doc.ref.collection != "unknown":
+            read |= _ref_keys(doc.ref)
+    return all(cited.lower() in read for cited in cited_ids)
 
 
 def _prefer_cited(citations: list[MongoRef], cited_ids: list[str]) -> list[MongoRef]:

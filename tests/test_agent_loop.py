@@ -293,12 +293,189 @@ def test_different_model_synthesizes_from_evidence():
         ],
         answer_model="gpt-5",
         answer_reasoner=reasoner,
+        synthesis="always",
     )
     assert reasoner.calls == 1
     assert session.agent_turns == 3  # 2 tool turns + synthesis
     assert "AUTH_401" in session.answer or "mig_auth_sso" in session.answer
     assert session.citations[0].document_id == "log_1001"
     assert len(client.calls) == 2
+
+
+class _CountingReasoner(HeuristicReasoningModel):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, prompt, *, system=None):
+        self.calls += 1
+        return super().generate(prompt, system=system)
+
+
+def _read_then_submit(submit: dict) -> list:
+    return [
+        _response([_tool_call("c1", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]),
+        _response([_tool_call("c2", "submit_answer", submit)]),
+    ]
+
+
+def test_cited_answer_from_read_documents_skips_the_rewrite():
+    reasoner = _CountingReasoner()
+    session, client = _run(
+        _read_then_submit(SUBMIT), answer_model="gpt-5", answer_reasoner=reasoner
+    )
+    assert reasoner.calls == 0
+    assert session.answer == SUBMIT["answer"]
+    assert session.agent_turns == 2
+    assert session.citations[0].document_id == "log_1001"
+    assert session.tool_stats["synthesis"] == "skipped_grounded"
+    steps = session.tool_stats["steps"]
+    assert not any("synthesize" in (step.get("tools") or []) for step in steps)
+    assert session.status == SessionStatus.complete
+    assert len(client.calls) == 2
+
+
+def test_answer_is_rewritten_when_a_citation_was_not_read():
+    for cited in ([], ["mare_demo.logs:log_9999"], ["mare_demo.logs:log_1001", "tickets:t_1"]):
+        reasoner = _CountingReasoner()
+        session, _ = _run(
+            _read_then_submit({**SUBMIT, "cited_source_ids": cited}),
+            answer_model="gpt-5",
+            answer_reasoner=reasoner,
+        )
+        assert reasoner.calls == 1, cited
+        assert "synthesis" not in session.tool_stats
+
+
+def test_answer_is_rewritten_after_a_budget_stop():
+    reasoner = _CountingReasoner()
+    session, _ = _run(
+        [
+            _response(
+                [_tool_call("c1", "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})]
+            ),
+            _response([_tool_call("c2", "submit_answer", SUBMIT)]),
+        ],
+        answer_model="gpt-5",
+        answer_reasoner=reasoner,
+        max_turns=1,
+    )
+    assert session.status == SessionStatus.budget_exhausted
+    assert reasoner.calls == 1
+
+
+def test_short_and_bare_cited_ids_count_as_read():
+    for cited in (["logs:log_1001"], ["log_1001"], ["MARE_DEMO.LOGS:LOG_1001"]):
+        reasoner = _CountingReasoner()
+        _run(
+            _read_then_submit({**SUBMIT, "cited_source_ids": cited}),
+            answer_model="gpt-5",
+            answer_reasoner=reasoner,
+        )
+        assert reasoner.calls == 0, cited
+
+
+def _retrieve(call_id: str) -> SimpleNamespace:
+    return _tool_call(call_id, "retrieve_evidence", {"node_ids": ["nav:group:cust_007"]})
+
+
+def _forced(call: dict) -> bool:
+    return call["tool_choice"] != "auto"
+
+
+def test_two_turns_without_new_evidence_force_a_submit():
+    session, client = _run(
+        [
+            _response([_retrieve("c1")]),
+            _response([_retrieve("c2")]),
+            _response([_retrieve("c3")]),
+            _response([_tool_call("c4", "submit_answer", SUBMIT)]),
+        ]
+    )
+    assert [_forced(call) for call in client.calls] == [False, False, False, True]
+    assert session.status == SessionStatus.complete
+    assert session.stop_reason == "no_new_evidence"
+    assert session.answer.startswith("SSO failed")
+    last = client.calls[3]["messages"]
+    repeats = [
+        json.loads(m["content"]) for m in last if m.get("tool_call_id") in {"c2", "c3"}
+    ]
+    assert repeats and all("already returned" in body.get("note", "") for body in repeats)
+    first = next(m for m in last if m.get("tool_call_id") == "c1")
+    assert "already returned" not in first["content"]
+    assert client._script == []
+
+
+def test_new_nodes_every_turn_are_not_cut_off():
+    counter = {"n": 0}
+
+    def search(query, **kwargs):
+        counter["n"] += 1
+        hit = json.loads(json.dumps(SEARCH_HIT))
+        hit["results"][0]["node_id"] = f"nav:group:cust_{counter['n']:03d}"
+        return hit
+
+    handlers = {**_handlers(), "search_information": search}
+    session, client = _run(
+        [
+            _response([_retrieve("c1")]),
+            _response([_tool_call("c2", "search_information", {"query": "a"})]),
+            _response([_tool_call("c3", "search_information", {"query": "b"})]),
+            _response([_tool_call("c4", "search_information", {"query": "c"})]),
+            _response([_tool_call("c5", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers,
+    )
+    assert not any(_forced(call) for call in client.calls)
+    assert session.stop_reason == "completed"
+
+
+def test_different_empty_queries_are_progress_and_a_repeat_is_not():
+    def query(namespace, filter, **kwargs):
+        return {"count": 0, "namespace": namespace, "documents": []}
+
+    handlers = {**_handlers(), "query_documents": query}
+    probe_a = {"namespace": "mare_demo.incidents", "filter": {"customer_id": "cust_004"}}
+    probe_b = {"namespace": "mare_demo.incidents", "filter": {"customer_id": "cust_005"}}
+    session, client = _run(
+        [
+            _response([_retrieve("c1")]),
+            _response([_tool_call("c2", "query_documents", probe_a)]),
+            _response([_tool_call("c3", "query_documents", probe_b)]),
+            _response([_tool_call("c4", "query_documents", probe_b)]),
+            _response([_tool_call("c5", "query_documents", probe_a)]),
+            _response([_tool_call("c6", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers,
+    )
+    assert [_forced(call) for call in client.calls] == [False] * 5 + [True]
+    assert session.stop_reason == "no_new_evidence"
+
+
+def test_repeats_before_any_read_leave_the_unread_guard_in_charge():
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "x"})]),
+            _response([_tool_call("c2", "search_information", {"query": "x"})]),
+            _response([_tool_call("c3", "search_information", {"query": "x"})]),
+            _response([_retrieve("c4")]),
+            _response([_tool_call("c5", "submit_answer", SUBMIT)]),
+        ]
+    )
+    assert not any(_forced(call) for call in client.calls)
+    assert session.stop_reason == "completed"
+
+
+def test_budget_still_wins_over_a_stall():
+    session, client = _run(
+        [
+            _response([_retrieve("c1")]),
+            _response([_retrieve("c2")]),
+            _response([_tool_call("c3", "submit_answer", SUBMIT)]),
+        ],
+        max_turns=2,
+    )
+    assert session.status == SessionStatus.budget_exhausted
+    assert session.stop_reason == "max_agent_turns"
 
 
 SCHEMA_LEAKS = (

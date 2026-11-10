@@ -51,8 +51,12 @@ class GenericSurface:
         self._fetch_ms = 0.0
         self._fetch_docs = 0
         self._fetch_ids = 0
+        self._fetch_calls = 0
+        self._fetch_max_ms = 0.0
         self._embed_ms = 0.0
         self.question = ""
+        self._row_cache: dict[tuple, list[dict[str, Any]]] = {}
+        self._query_vectors: dict[str, list[float]] = {}
         chosen = query_embedder if query_embedder is not None else embedder
         self._vector_by_id = {}
         if vectors and chosen is not None:
@@ -69,6 +73,12 @@ class GenericSurface:
             }
         else:
             self.semantic = {"status": "lexical_only", "reason": "no embedding provider"}
+
+    def begin_ask(self, question: str) -> None:
+        """Reads and query vectors are reused within one ask only."""
+        self.question = question
+        self._row_cache.clear()
+        self._query_vectors.clear()
 
     def handlers(self) -> dict[str, Any]:
         return {
@@ -96,7 +106,10 @@ class GenericSurface:
             hits = [node for node in pool if node["node_type"] == "collection"][:cap]
         results = [_brief(node) for node in hits]
         documents = self._documents_named_in(self._focus(query), cap)
-        related = self._related([*hits, *_origins_for(documents)], query)
+        origins = _origins_for(documents)
+        related = self._related(origins, query) if origins else []
+        if not related:
+            related = self._related([*hits, *origins], query)
         self._finish_timing()
         payload: dict[str, Any] = {
             "method": mode or "hybrid",
@@ -238,14 +251,27 @@ class GenericSurface:
 
     def _related(self, nodes: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
         """Bind a validated hop to the key on the documents that matched the query."""
-        out: list[dict[str, Any]] = []
+        hop_plans: dict[str, list[dict[str, Any]]] = {}
+        for plan in self.index.plans:
+            if plan.get("op") == "hop":
+                hop_plans.setdefault(str(plan.get("collection") or ""), []).append(plan)
+        sources = [
+            node.get("source") or {}
+            for node in nodes
+            if str((node.get("source") or {}).get("collection") or "") in hop_plans
+        ]
+        loaded: dict[str, list[dict[str, Any]]] = {}
+        wanted: list[tuple[str, str, str, Any, str]] = []
         seen: set[str] = set()
-        for node in nodes:
-            source = node.get("source") or {}
+        for position, source in enumerate(sources):
             collection = str(source.get("collection") or "")
-            if not collection:
-                continue
-            members = self._members(collection, source.get("document_ids") or [])
+            if collection not in loaded:
+                loaded[collection] = self._members_of(collection, sources[position:])
+            ids = source.get("document_ids") or []
+            members = []
+            if ids and len(ids) <= MEMBER_PREFETCH_LIMIT:
+                mine = {str(i) for i in ids}
+                members = [doc for doc in loaded[collection] if str(doc.get("_id")) in mine]
             if query:
                 ranked = sorted(
                     members,
@@ -257,9 +283,7 @@ class GenericSurface:
                 members = (focused or ranked)[:2]
             else:
                 members = members[:3]
-            for plan in self.index.plans:
-                if plan.get("op") != "hop" or plan.get("collection") != collection:
-                    continue
+            for plan in hop_plans[collection]:
                 target = str(plan["to_collection"])
                 to_field = str(plan.get("to_field") or "_id")
                 for doc in members:
@@ -270,36 +294,72 @@ class GenericSurface:
                     if node_id in seen:
                         continue
                     seen.add(node_id)
-                    out.append(
-                        {
-                            "node_id": node_id,
-                            "name": f"{target} {value}",
-                            "node_type": "group",
-                            "summary": (
-                                f"Hop {collection}.{plan['field']} -> {target}.{to_field} = {value}"
-                            )[:_SUMMARY],
-                            "source": {
-                                "database": self.index.database,
-                                "collection": target,
-                                "filter": {to_field: value},
-                                "document_ids": [
-                                    str(row.get("_id"))
-                                    for row in self._rows(
-                                        target, filt={to_field: value}, limit=8
-                                    )
-                                ],
-                            },
-                            "children_preview": [],
-                        }
-                    )
-                    if len(out) >= 6:
-                        return out
-        return out
+                    wanted.append((collection, str(plan["field"]), target, value, to_field))
+                    if len(wanted) >= 6:
+                        return self._hop_nodes(wanted)
+        return self._hop_nodes(wanted)
 
-    def _members(self, collection: str, document_ids: list[Any]) -> list[dict[str, Any]]:
-        if not document_ids or len(document_ids) > MEMBER_PREFETCH_LIMIT:
-            return []
-        return self._rows(collection, ids=document_ids)
+    def _members_of(
+        self, collection: str, sources: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """One read for every small card of this collection still to be bound."""
+        ids: list[Any] = []
+        taken: set[str] = set()
+        for source in sources:
+            if str(source.get("collection") or "") != collection:
+                continue
+            members = source.get("document_ids") or []
+            if not members or len(members) > MEMBER_PREFETCH_LIMIT:
+                continue
+            for doc_id in members:
+                if str(doc_id) not in taken:
+                    taken.add(str(doc_id))
+                    ids.append(doc_id)
+        rows: list[dict[str, Any]] = []
+        for start in range(0, len(ids), MEMBER_PREFETCH_LIMIT):
+            rows.extend(self._rows(collection, ids=ids[start : start + MEMBER_PREFETCH_LIMIT]))
+        return rows
+
+    def _hop_nodes(self, wanted: list[tuple[str, str, str, Any, str]]) -> list[dict[str, Any]]:
+        by_id: dict[str, dict[str, list[str]]] = {}
+        for _collection, _field, target, value, to_field in wanted:
+            if to_field == "_id" and _scalar(value) and target not in by_id:
+                values = [
+                    item[3]
+                    for item in wanted
+                    if item[2] == target and item[4] == "_id" and _scalar(item[3])
+                ]
+                found: dict[str, list[str]] = {}
+                for row in self._rows(target, ids=values):
+                    found.setdefault(str(row.get("_id")), []).append(str(row.get("_id")))
+                by_id[target] = found
+        out: list[dict[str, Any]] = []
+        for collection, field, target, value, to_field in wanted:
+            if to_field == "_id" and _scalar(value):
+                document_ids = by_id[target].get(str(value), [])[:8]
+            else:
+                document_ids = [
+                    str(row.get("_id"))
+                    for row in self._rows(target, filt={to_field: value}, limit=8)
+                ]
+            out.append(
+                {
+                    "node_id": f"hop:{target}:{to_field}:{value}",
+                    "name": f"{target} {value}",
+                    "node_type": "group",
+                    "summary": (
+                        f"Hop {collection}.{field} -> {target}.{to_field} = {value}"
+                    )[:_SUMMARY],
+                    "source": {
+                        "database": self.index.database,
+                        "collection": target,
+                        "filter": {to_field: value},
+                        "document_ids": document_ids,
+                    },
+                    "children_preview": [],
+                }
+            )
+        return out
 
     def _documents_named_in(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Point-read ids the question names, from every collection that contains them."""
@@ -387,6 +447,8 @@ class GenericSurface:
         self._fetch_ms = 0.0
         self._fetch_docs = 0
         self._fetch_ids = 0
+        self._fetch_calls = 0
+        self._fetch_max_ms = 0.0
         self._embed_ms = 0.0
         self.last_timing = {}
 
@@ -396,6 +458,8 @@ class GenericSurface:
             "fetch_ms": round(self._fetch_ms),
             "fetch_docs": self._fetch_docs,
             "fetch_ids": self._fetch_ids,
+            "fetch_calls": self._fetch_calls,
+            "fetch_max_ms": round(self._fetch_max_ms),
         }
 
     def _rows(
@@ -405,6 +469,27 @@ class GenericSurface:
         ids: list[Any] | None = None,
         filt: dict[str, Any] | None = None,
         limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        key = (
+            collection,
+            tuple(str(i) for i in ids) if ids else None,
+            json.dumps(filt, sort_keys=True, default=str) if filt else None,
+            limit,
+        )
+        cached = self._row_cache.get(key)
+        if cached is not None:
+            return list(cached)
+        rows = self._fetch_rows(collection, ids=ids, filt=filt, limit=limit)
+        self._row_cache[key] = list(rows)
+        return rows
+
+    def _fetch_rows(
+        self,
+        collection: str,
+        *,
+        ids: list[Any] | None,
+        filt: dict[str, Any] | None,
+        limit: int | None,
     ) -> list[dict[str, Any]]:
         if self._reader is not None:
             started = time.perf_counter()
@@ -419,7 +504,10 @@ class GenericSurface:
                 rows = [doc for doc in rows if _matches(doc, filt)]
             if limit is not None:
                 rows = rows[: int(limit)]
-        self._fetch_ms += (time.perf_counter() - started) * 1000
+        spent = (time.perf_counter() - started) * 1000
+        self._fetch_ms += spent
+        self._fetch_max_ms = max(self._fetch_max_ms, spent)
+        self._fetch_calls += 1
         self._fetch_docs += len(rows)
         self._fetch_ids += len(ids or [])
         return rows
@@ -445,17 +533,7 @@ class GenericSurface:
         for rank, node in enumerate(lexical):
             scores[id(node)] += 1.0 / (60 + rank + 1)
         if self._vector_by_id and self._embedder is not None:
-            embedded: list[list[float]] = []
-            with self._embed_lock:
-                started = time.perf_counter()
-                try:
-                    embedded = self._embedder.embed([query])
-                except Exception:
-                    embedded = []
-                else:
-                    self.embed_calls["queries"] += 1
-                self._embed_ms += (time.perf_counter() - started) * 1000
-            query_vec = list(embedded[0]) if embedded else []
+            query_vec = self._query_vector(query)
             stored = next(iter(self._vector_by_id.values()), [])
             if query_vec and stored and len(query_vec) != len(stored):
                 query_vec = []
@@ -470,6 +548,24 @@ class GenericSurface:
                 for rank, node in enumerate(order):
                     scores[id(node)] += 1.0 / (60 + rank + 1)
         return sorted(pool, key=lambda node: (-scores[id(node)], str(node["_id"])))
+
+    def _query_vector(self, query: str) -> list[float]:
+        with self._embed_lock:
+            if query in self._query_vectors:
+                return list(self._query_vectors[query])
+            embedded: list[list[float]] = []
+            started = time.perf_counter()
+            try:
+                embedded = self._embedder.embed([query])
+            except Exception:
+                embedded = []
+            else:
+                self.embed_calls["queries"] += 1
+            self._embed_ms += (time.perf_counter() - started) * 1000
+            vector = list(embedded[0]) if embedded else []
+            if vector:
+                self._query_vectors[query] = vector
+            return list(vector)
 
     def _docs_for(self, node: dict[str, Any], query: str, limit: int) -> list[dict[str, Any]]:
         source = node.get("source") or {}
@@ -599,6 +695,10 @@ def _origins_for(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {"source": {"collection": collection, "document_ids": ids}}
         for collection, ids in grouped.items()
     ]
+
+
+def _scalar(value: Any) -> bool:
+    return isinstance(value, (str, int)) and not isinstance(value, bool)
 
 
 def _ids_named_in_query(query: str) -> set[str]:
