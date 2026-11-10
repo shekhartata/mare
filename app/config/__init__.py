@@ -116,6 +116,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("MARE_PARALLEL_TOOLS_GLOBAL", "parallel_tools_global"),
     )
 
+    # "auto" keeps the agent's answer when every citation is a document it read;
+    # "always" rewrites every answer with the answer model.
+    synthesis: str = Field(
+        default="auto", validation_alias=AliasChoices("MARE_SYNTHESIS", "synthesis")
+    )
+
     # Receipt compact on the tool loop (default on). ACGC sidecar is separate and off.
     compact_context: bool = Field(
         default=True, validation_alias=AliasChoices("MARE_COMPACT", "compact_context")

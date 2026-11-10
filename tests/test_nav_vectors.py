@@ -7,6 +7,7 @@ from app.indexing.signals.nav_nodes import build_nav_nodes
 from app.indexing.signals.store import (
     SemanticIndexError,
     load_generic_handlers,
+    reset_loaded_indexes,
     save_generic_index,
     upgrade_vectors,
 )
@@ -28,6 +29,7 @@ class FakeEmbed:
 
 def setup_function() -> None:
     reset_index_state()
+    reset_loaded_indexes()
     get_settings().generic_semantic_required = False
 
 
@@ -184,6 +186,86 @@ def test_fixed_vectors_rank_the_matching_card_first():
     lifted = order(boosted)
     assert lifted == order(boosted)
     assert lifted.index(refund["_id"]) < plain.index(refund["_id"])
+
+
+def _saved_reads(client) -> int:
+    agent = client["_agent_retrieval"]
+    return sum(
+        getattr(agent[name], "finds", 0) for name in ("generic_cards", "generic_nav_vectors")
+    )
+
+
+def test_second_ask_reuses_the_loaded_build():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    embedder = FakeEmbed()
+    client = _Client()
+    save_generic_index(client, index, _scope(docs), embedder=embedder)
+    first = load_generic_handlers(client, embedder)
+    reads = _saved_reads(client)
+    second = load_generic_handlers(client, embedder)
+    assert _saved_reads(client) == reads
+    assert second.semantic == first.semantic == {"status": "ready", "reason": ""}
+    assert second.surface is not first.surface
+    assert [n["_id"] for n in second.surface.nodes] == [n["_id"] for n in first.surface.nodes]
+    second.surface.question = "changed"
+    assert first.surface.question == ""
+    embedder.calls.clear()
+    second["search_information"]("pilled", tenant_id="generic", scope=None, mode=None, limit=4)
+    assert embedder.calls == [["pilled"]]
+
+
+def test_a_new_build_is_loaded_again():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    embedder = FakeEmbed()
+    client = _Client()
+    scope = _scope(docs)
+    save_generic_index(client, index, scope, embedder=embedder)
+    load_generic_handlers(client, embedder)
+    index.cards[0]["search_text"] += " unique-token"
+    save_generic_index(client, index, scope, embedder=embedder)
+    reads = _saved_reads(client)
+    reloaded = load_generic_handlers(client, embedder)
+    assert _saved_reads(client) > reads
+    card = index.cards[0]
+    node_id = f"card:{card['collection']}:{card['key']}"
+    loaded = next(n for n in reloaded.surface.nodes if n["_id"] == node_id)
+    assert "unique-token" in loaded["search_text"]
+
+
+def test_legacy_catalog_is_read_on_every_ask():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    client = _Client()
+    client["_agent_retrieval"]["generic_catalog"].docs = [
+        {
+            "_id": "active",
+            "database": "mare_shop",
+            "profile": index.profile,
+            "plans": index.plans,
+            "text_fields": {},
+            "scope": _scope(docs),
+        }
+    ]
+    client["_agent_retrieval"]["generic_cards"].docs = [
+        {"collection": card["collection"], **card} for card in index.cards
+    ]
+    load_generic_handlers(client, FakeEmbed())
+    reads = _saved_reads(client)
+    load_generic_handlers(client, FakeEmbed())
+    assert _saved_reads(client) > reads
+
+
+def test_cached_build_still_rejects_another_embedding_model():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    client = _Client()
+    save_generic_index(client, index, _scope(docs), embedder=FakeEmbed("model-a"))
+    assert load_generic_handlers(client, FakeEmbed("model-a")).semantic["status"] == "ready"
+    other = load_generic_handlers(client, FakeEmbed("model-b"))
+    assert other.semantic["status"] == "unavailable"
+    assert load_generic_handlers(client, FakeEmbed("model-a")).semantic["status"] == "ready"
 
 
 def test_request_time_includes_handler_load(monkeypatch):

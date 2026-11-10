@@ -178,6 +178,116 @@ def test_named_id_on_large_cards_is_read_from_every_collection():
     assert all(len(ids) <= MEMBER_PREFETCH_LIMIT for _collection, ids in surface._reader.calls)
 
 
+class _ShopReader:
+    def __init__(self, docs: dict) -> None:
+        self.docs = docs
+        self.calls: list[tuple[str, int, dict | None]] = []
+
+    def fetch(self, collection, *, ids=None, filt=None, limit=None):
+        from app.retrieval.generic_tools import _matches
+
+        self.calls.append((collection, len(ids or []), filt))
+        rows = list(self.docs.get(collection) or [])
+        if ids:
+            wanted = {str(i) for i in ids}
+            rows = [doc for doc in rows if str(doc.get("_id")) in wanted]
+        if filt:
+            rows = [doc for doc in rows if _matches(doc, filt)]
+        return rows[: int(limit)] if limit is not None else rows
+
+
+def _hop_collections(index) -> set[str]:
+    return {plan["collection"] for plan in index.plans if plan.get("op") == "hop"}
+
+
+def test_related_reads_each_collection_once_and_skips_cards_without_hops():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    reader = _ShopReader(docs)
+    surface = GenericSurface(index, reader=reader)
+    hopping = _hop_collections(index)
+    groups = [node for node in surface.nodes if node["node_type"] == "group"]
+    linked = [g for g in groups if g["source"]["collection"] in hopping]
+    unlinked = [g for g in groups if g["source"]["collection"] not in hopping]
+    collection = linked[0]["source"]["collection"]
+    ids = list(linked[0]["source"]["document_ids"])
+    half = max(1, len(ids) // 2)
+    same = [
+        {"source": {"collection": collection, "document_ids": part}}
+        for part in (ids[:half], ids[half:] or ids)
+    ]
+    asked = [*same, *unlinked[:2]]
+    got = surface._related(asked, "")
+    assert got
+    assert got == GenericSurface(index)._related(asked, "")
+    by_ids = [(name, size) for name, size, filt in reader.calls if size and not filt]
+    targets = {node["source"]["collection"] for node in got}
+    for name in {name for name, _size in by_ids}:
+        expected = (name == collection) + (name in targets)
+        assert len([1 for read, _size in by_ids if read == name]) <= expected
+    assert [read for read, _size in by_ids].count(collection) >= 1
+    untouched = {g["source"]["collection"] for g in unlinked} - targets - {collection}
+    assert not any(read in untouched for read, _size, _filt in reader.calls)
+
+
+def test_one_ask_reuses_reads_and_query_vectors():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    nodes = build_nav_nodes(index)
+
+    class Embed:
+        dimensions = 3
+        model = "fixed"
+
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def embed(self, texts):
+            self.calls.append(list(texts))
+            return [[1.0, 0.0, 0.0] for _ in texts]
+
+    embed = Embed()
+    reader = _ShopReader(docs)
+    surface = GenericSurface(
+        index,
+        reader=reader,
+        vectors={node["_id"]: [1.0, 0.0, 0.0] for node in nodes},
+        query_embedder=embed,
+    )
+    surface.begin_ask("sweater pilled after one wash")
+    first = surface.search_information("sweater pilled", tenant_id=None, scope=None, limit=4)
+    reads = len(reader.calls)
+    again = surface.search_information("sweater pilled", tenant_id=None, scope=None, limit=4)
+    assert again == first
+    assert embed.calls == [["sweater pilled"]]
+    assert len(reader.calls) == reads
+    assert surface.last_timing["fetch_calls"] == 0
+
+    surface.begin_ask("another question")
+    surface.search_information("sweater pilled", tenant_id=None, scope=None, limit=4)
+    assert embed.calls == [["sweater pilled"], ["sweater pilled"]]
+    assert len(reader.calls) > reads
+
+
+def test_a_named_document_binds_its_own_hops_first():
+    docs = shop_documents()
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    hopping = _hop_collections(index)
+    plan = next(p for p in index.plans if p.get("op") == "hop")
+    named = next(d for d in docs[plan["collection"]] if d.get(plan["field"]) is not None)
+    reader = _ShopReader(docs)
+    surface = GenericSurface(index, reader=reader)
+    surface.begin_ask(f"what does {named['_id']} point to")
+    found = surface.search_information(
+        f"{plan['collection']} {named['_id']}", tenant_id=None, scope=None, limit=8
+    )
+    assert [doc["ref"]["document_id"] for doc in found["documents"]] == [str(named["_id"])]
+    value = named[plan["field"]]
+    assert any(str(value) in node["node_id"] for node in found["related_nodes"])
+    member_reads = [c for c in reader.calls if c[1] and not c[2] and c[0] in hopping]
+    assert all(size == 1 for _name, size, _filt in member_reads if _name == plan["collection"])
+
+
 class _NamedReader:
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []

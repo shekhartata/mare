@@ -142,7 +142,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "properties": {
                     "answer": {
                         "type": "string",
-                        "description": "Grounded answer with inline Mongo citations.",
+                        "description": (
+                            "Grounded answer with inline Mongo citations. When the question "
+                            "describes an entity instead of naming it, name the entity you "
+                            "identified (its name and id) before the answer."
+                        ),
                     },
                     "hypothesis": {"type": "string"},
                     "claims": {

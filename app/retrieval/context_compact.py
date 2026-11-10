@@ -133,6 +133,8 @@ def _brief(data: dict[str, Any]) -> dict[str, Any]:
         docs = _document_briefs(data)
         if docs:
             out = {"documents": docs, **out}
+        if data.get("note"):
+            out["note"] = str(data["note"])[:300]
         return out
     if "documents" in data:
         related = [
@@ -148,6 +150,8 @@ def _brief(data: dict[str, Any]) -> dict[str, Any]:
             out["related_nodes"] = related
         if data.get("missing_nodes"):
             out["missing_nodes"] = data.get("missing_nodes")
+        if data.get("note"):
+            out["note"] = str(data["note"])[:300]
         return out
     if data.get("error"):
         return {"error": str(data["error"])[:400]}

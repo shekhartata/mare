@@ -123,16 +123,23 @@ Shop (5 documents) and warehouse (7 documents), same tool loop. K=8 is the whole
 
 ### Demo vs hybrid RAG (K=10)
 
-Nine cases on `mare_demo`. Vectors **616 vs 5,424** (11%).
+Nine questions on the packaged demo. MARE stores **616** navigation vectors. RAG stores **5,424** chunks.
 
-| Case | MARE | RAG | What it tests |
-| --- | --- | --- | --- |
-| Named lookup / named multi-hop | yes | yes | IDs in the question. |
-| **Bridge** (entity not named) | **yes** | **no** | Hop via `related_nodes`. |
-| Aggregation (count enterprise) | no* | 8 (Top-K) | *Retrieved all 18; synthesizer did not count. |
-| **Negative** (Cedar in April) | **yes** | **no** | Prove absence. |
-| **Distributed** (Northstar) | **yes** | **no** at K=10; yes at K=20 | Lookalike customer at default K. |
-| Variable-K Apex (small / medium / deep) | no / yes / yes | no† / yes / yes | †RAG K=5 complete on small; K=10 omitted the entity. |
+A question now takes about **21 seconds** and **15k tokens**, down from **39 seconds** and **19k tokens** on the 29 Oct run. MARE still answers **7 of 9**. RAG answered **4 of 9**, in about **11 seconds**. MARE still covers the questions RAG misses: a count, a proof that nothing happened, and the longer Apex investigations. This run missed the unnamed customer and the Northstar incident. Those two move between runs.
+
+The time came out of the agent loop. The index stays in memory after the first question, search reads fewer documents, and a cited answer is kept instead of being rewritten by a second model call.
+
+| Case | MARE | Time | RAG |
+| --- | --- | ---: | --- |
+| Named lookup | yes | 6.8 s | yes |
+| Named multi-hop | yes | 31.4 s | yes |
+| Bridge (customer not named) | no | 41.8 s | no |
+| Aggregation (count) | yes | 12.4 s | no |
+| Negative (nothing happened) | yes | 8.9 s | no |
+| Distributed (Northstar) | no | 11.9 s | no |
+| Apex, most recent incident | yes | 21.0 s | no |
+| Apex, May sequence | yes | 19.5 s | yes |
+| Apex, three-month history | yes | 39.0 s | yes |
 
 Full prompts and traces: [reports/README.md](reports/README.md).
 
