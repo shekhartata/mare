@@ -5,9 +5,9 @@ Two different questions. Do not collapse them into one quality-vs-vectors senten
 | | What was measured | Result |
 | --- | --- | --- |
 | **LLM-off** | Can the navigation index match chunk-level RAG retrieval? | **No.** Semantic nav Recall@10 is 0.137 vs RAG 0.230. |
-| **LLM-on** | Can the agent, with that weaker index plus Mongo tools, match RAG *answers*? | **On a 20-query sample, yes on needle correctness** (19/20 vs 18/20), at ~1% of RAG vectors, ~2× latency, ~19× tokens. |
+| **LLM-on** | Can the agent, with that weaker index plus Mongo tools, match RAG *answers*? | **On a 20-query sample, yes on needle correctness** (19/20 vs 18/20), at ~1% of RAG vectors. The 10 Nov receipts run is **21 s** and **13.8k tokens** against RAG at **12 s** and **2.1k**. |
 
-LLM-off used 197 held-out queries. LLM-on used 20 of those (4 per category). Gold-id recall did **not** improve with the agent.
+LLM-off used 197 held-out queries. LLM-on used 20 of those (4 per category). On the 10 Nov receipts run, gold-id recall is **0.35** for MARE and **0.28** for RAG. Chunk-level Recall@10 of the navigation index stays **0.137**.
 
 ## LLM-off: retrieval only (197 held-out, K=10)
 
@@ -28,7 +28,7 @@ Full write-up: [density_pareto.md](density_pareto.md), [semantic_nav.md](semanti
 
 ## LLM-on: agent vs RAG answers (20 held-out)
 
-Same semantic nav (604 vectors). Blind agent (`gpt-5-mini` tools, `gpt-5` answers) vs hybrid Top-K RAG (`gpt-5`). Scoring is vocabulary needles plus gold document ids, not a human or LLM judge.
+Same semantic nav (604 vectors). Blind agent (`gpt-5-mini` tools, `gpt-5` answers) vs hybrid Top-K RAG (`gpt-5`). Scoring is vocabulary needles plus gold document ids, not a human or LLM judge. The table below is the earlier full-history loop.
 
 | | MARE | RAG |
 | --- | ---: | ---: |
@@ -42,7 +42,7 @@ Same semantic nav (604 vectors). Blind agent (`gpt-5-mini` tools, `gpt-5` answer
 
 Fine-grained answers were 4/4 needle-correct on both engines, while MARE gold-slice recall there was 0.03 vs RAG 0.28 — the agent names the cause from the neighborhood without recovering the same gold ids.
 
-Full write-up (vanilla, full tool JSON): [llm_on.md](llm_on.md). Default loop is now receipts (15.7k tokens): [llm_on_acgc_ablation.md](llm_on_acgc_ablation.md). Opt-in ACGC sidecar: [llm_on_acgc.md](llm_on_acgc.md).
+Full write-up (vanilla, full tool JSON): [llm_on.md](llm_on.md). The 10 Nov receipts rerun, same 20 questions and the same 604-vector index, is **19/20**, gold-id recall **0.35**, **21 s**, **13.8k** tokens, 5.0 tool calls. RAG on that run is **18/20**, **12 s**, **2.1k**. August ablation: [llm_on_acgc_ablation.md](llm_on_acgc_ablation.md). Opt-in ACGC sidecar: [llm_on_acgc.md](llm_on_acgc.md).
 
 ## Commands
 

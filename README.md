@@ -155,18 +155,22 @@ MCP matches named lookup and absence. It misses the bridge and the distributed /
 
 ### Scale (10K incidents, LLM-on)
 
-Agent plus a small navigation index plus Mongo tools. Semantic nav is **604 vectors vs 60,000 RAG chunks**. Blind agent vs hybrid Top-K RAG. 20 held-out questions, 4 per category. The embedding footprint is about 1% of RAG; the loop spends more tokens and a little more latency to get there.
+Agent plus a small navigation index plus Mongo tools. Semantic nav is **604 vectors vs 60,000 RAG chunks**. Blind agent vs hybrid Top-K RAG. 20 held-out questions, 4 per category. The embedding footprint is about 1% of RAG.
+
+On 10 Nov the same 20 questions took about **21 seconds** and **13.8k tokens**, down from **37 seconds** and **15.7k tokens** on the 28 Aug receipts run. MARE still answers **19 of 20**. RAG still answers **18 of 20**, in about **12 seconds**. Gold-id recall is **0.35** against RAG **0.28**. The one MARE miss is a paraphrase question that also ran out of turns. RAG missed that question and one rare question.
+
+When the agent has already cited documents it read, that answer is kept instead of being rewritten by a second model call. The navigation index is unchanged.
 
 | | MARE | RAG |
 | --- | ---: | ---: |
 | Persistent vectors | **604 (1%)** | 60,000 |
 | Answer correct | **19/20** | 18/20 |
-| Gold-id recall | 0.32 | 0.28 |
-| Latency | 37 s | 12 s |
-| Tokens | **15.7k** | 2.1k |
-| Tool calls | 4.5 | 0 |
+| Gold-id recall | 0.35 | 0.28 |
+| Latency | 21 s | 12 s |
+| Tokens | **13.8k** | 2.1k |
+| Tool calls | 5.0 | 0 |
 
-Receipts are on by default (`MARE_COMPACT=true`). Full-history vanilla was 40.6k tokens / 25 s. [ACGC](https://github.com/shekhartata/acgcProject) stays off (`MARE_ACGC=false`); the sidecar on top of receipts did not cut tokens (19.7k). Ablation: [reports/scale/llm_on_acgc_ablation.md](reports/scale/llm_on_acgc_ablation.md). Retrieval-only scoring of the navigation index: [reports/scale/README.md](reports/scale/README.md).
+Receipts stay on (`MARE_COMPACT=true`). The earlier full-history loop was 40.6k tokens / 25 s. [ACGC](https://github.com/shekhartata/acgcProject) stays off (`MARE_ACGC=false`); adding the sidecar on the August receipts run did not cut tokens (19.7k). Ablation: [reports/scale/llm_on_acgc_ablation.md](reports/scale/llm_on_acgc_ablation.md). Retrieval-only scoring of the navigation index: [reports/scale/README.md](reports/scale/README.md).
 
 ## How a question is answered
 
