@@ -2,6 +2,8 @@
 
 Same 20 held-out queries as [llm_on.md](llm_on.md). Default loop is now B.
 
+The B column is the 28 Aug receipts run. A 10 Nov rerun of that receipts loop, with A and C left as recorded, is 19/20, gold-id recall 0.35, 21 s, 13.8k tokens.
+
 | Arm | What ran |
 | --- | --- |
 | **A** vanilla | Existing `llm_on_10000_semantic_d20_heldout.json` |
