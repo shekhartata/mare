@@ -330,6 +330,15 @@ def test_document_text_keeps_a_nested_field_past_the_eighth_key():
     assert "6a7324183bb27cbb2f124d63" in quote_text
 
 
+def test_a_deeper_line_that_matches_more_of_the_question_is_kept():
+    doc = {
+        "terms_of_loan": {f"loan_type_{i}": "Conventional" for i in range(30)},
+        "property": {"address": {"state_code": "WI"}},
+    }
+    text = doc_to_text(doc, max_chars=500, focus="What is the property state on the loan?")
+    assert "state_code: WI" in text
+
+
 def test_common_question_words_do_not_push_out_the_asked_field():
     doc = {
         "_id": "00000ca5-ce7c-478a-bce9-9d739bd47d42",

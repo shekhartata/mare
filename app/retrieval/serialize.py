@@ -26,7 +26,7 @@ def doc_to_text(doc: dict[str, Any], max_chars: int = 1800, focus: str = "") -> 
             folded = line.lower()
             hits = sum(token in folded for token in tokens)
             depth = line.split(":", 1)[0].count(".")
-            return (0 if hits else 1, depth, -hits)
+            return (0 if hits else 1, -hits, depth)
 
         lines.sort(key=rank)
     return "\n".join(lines)[:max_chars]
