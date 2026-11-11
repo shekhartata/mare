@@ -122,6 +122,53 @@ def test_compact_keeps_a_document_returned_with_search_hits():
     assert "id-4999" not in out[-1]["content"]
 
 
+def test_older_receipt_keeps_every_document_whole():
+    partner = "status: Active\nmismo_version: 3.4\n" + ("p" * 500)
+    instance = (
+        "underwriting.automated_underwriting_response_type: ReferEligible\n"
+        "terms_of_loan.loan_purpose_type: Refinance\n"
+        "terms_of_loan.mortgage_type: Conventional\n"
+        + ("i" * 800)
+    )
+    retrieve = {
+        "count": 2,
+        "documents": [
+            {
+                "ref": {
+                    "database": "mi_transformation",
+                    "collection": "trading_partners",
+                    "document_id": "A0000142",
+                },
+                "text": partner,
+            },
+            {
+                "ref": {
+                    "database": "mi_transformation",
+                    "collection": "loan_instances",
+                    "document_id": "00000ca5-ce7c-478a-bce9-9d739bd47d42",
+                },
+                "text": instance,
+            },
+        ],
+    }
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "compare the loan instance with the loan"},
+        _assistant("c1", "retrieve_evidence"),
+        _tool("c1", retrieve),
+        _assistant("c2", "search_information"),
+        _tool("c2", {"method": "hybrid", "count": 0, "results": [], "related_nodes": []}),
+    ]
+    out = compact_messages(messages, token_budget=8000)
+    seen = json.loads(out[3]["content"])
+    texts = [doc["text"] for doc in seen["documents"]]
+    assert "Active" in texts[0]
+    assert "ReferEligible" in texts[1]
+    assert "Refinance" in texts[1]
+    assert "Conventional" in texts[1]
+    assert seen["documents"][1]["ref"]["document_id"] == "00000ca5-ce7c-478a-bce9-9d739bd47d42"
+
+
 def test_compact_noop_on_prefix_only():
     messages = [
         {"role": "system", "content": "sys"},

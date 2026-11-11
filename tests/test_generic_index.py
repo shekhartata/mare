@@ -188,6 +188,26 @@ def test_hallucinated_fields_and_unreviewed_routes_are_not_executable():
     assert all(plan.get("to_collection") != "right" for plan in probed.plans if plan["op"] == "hop")
 
 
+def test_collections_that_share_ids_get_a_hop_both_ways():
+    shared = {
+        "quote_read_model": [
+            {"_id": f"q{i}", "status": "Quoted", "partner": "A1"} for i in range(5)
+        ],
+        "quotes": [{"_id": f"q{i}", "raw_request_ref": f"p{i}"} for i in range(5)],
+        "notes": [{"_id": "q0", "text": "one shared id is not a link"}]
+        + [{"_id": f"n{i}", "text": "other"} for i in range(4)],
+    }
+    index = build_generic_index(shared, database="shared", use_cache=False)
+    hops = {
+        (plan["collection"], plan["field"], plan["to_collection"])
+        for plan in index.plans
+        if plan["op"] == "hop"
+    }
+    assert ("quote_read_model", "_id", "quotes") in hops
+    assert ("quotes", "_id", "quote_read_model") in hops
+    assert all("notes" not in (source, target) for source, _field, target in hops)
+
+
 def test_provider_failure_leaves_structural_plans():
     class Boom:
         name = "boom"

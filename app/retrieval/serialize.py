@@ -8,19 +8,25 @@ from app.models.schemas import MongoRef, RetrievedDocument
 
 _FOCUS = re.compile(r"[a-z0-9]{3,}")
 _SKIP = {"embedding", "search_text"}
+_STOP = frozenset(
+    "the and for are was were what which who whose that this those these its their then "
+    "than from with into does did has have had not but you your say give find tell show "
+    "whether both each also there here them they when where how why can will would should "
+    "could about over under per via any all too one two".split()
+)
 
 
 def doc_to_text(doc: dict[str, Any], max_chars: int = 1800, focus: str = "") -> str:
     """Flatten nested fields to dotted paths so a late key is not dropped."""
     lines: list[str] = []
     _flatten(doc, "", lines)
-    tokens = _FOCUS.findall((focus or "").lower())
+    tokens = sorted({t for t in _FOCUS.findall((focus or "").lower()) if t not in _STOP})
     if tokens:
         def rank(line: str) -> tuple[int, int, int]:
             folded = line.lower()
             hits = sum(token in folded for token in tokens)
             depth = line.split(":", 1)[0].count(".")
-            return (0 if hits else 1, depth, -hits)
+            return (0 if hits else 1, -hits, depth)
 
         lines.sort(key=rank)
     return "\n".join(lines)[:max_chars]
