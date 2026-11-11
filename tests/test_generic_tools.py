@@ -330,6 +330,22 @@ def test_document_text_keeps_a_nested_field_past_the_eighth_key():
     assert "6a7324183bb27cbb2f124d63" in quote_text
 
 
+def test_common_question_words_do_not_push_out_the_asked_field():
+    doc = {
+        "_id": "00000ca5-ce7c-478a-bce9-9d739bd47d42",
+        "underwriting": {
+            **{f"there_the_and_what_{i}": "Other" for i in range(10)},
+            "automated_underwriting_response_type": "ReferEligible",
+        },
+    }
+    text = doc_to_text(
+        doc,
+        max_chars=200,
+        focus="What is the automated underwriting response, and what is there?",
+    )
+    assert "ReferEligible" in text
+
+
 def test_query_keeps_a_field_named_in_the_question():
     index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
     surface = GenericSurface(index)

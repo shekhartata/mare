@@ -126,7 +126,7 @@ class LexicalProvider:
 
 class RelationshipProbe:
     name = "relationship_probe"
-    version = "1"
+    version = "2"
     requires = ("schema_profile",)
 
     def evaluate(self, context: SignalContext) -> dict[str, Any]:
@@ -136,6 +136,23 @@ class RelationshipProbe:
             for name, docs in context.documents.items()
         }
         for source, docs in context.documents.items():
+            own = ids.get(source) or set()
+            for target, target_ids in ids.items():
+                if target == source or not own or not target_ids:
+                    continue
+                overlap = len(own & target_ids) / len(own)
+                if overlap >= OVERLAP_MIN:
+                    routes.append(
+                        {
+                            "op": "hop",
+                            "from_collection": source,
+                            "from_field": "_id",
+                            "to_collection": target,
+                            "to_field": "_id",
+                            "overlap": round(overlap, 4),
+                            "status": "validated",
+                        }
+                    )
             fields = _string_fields(docs)
             for field, values in fields.items():
                 if not values:
