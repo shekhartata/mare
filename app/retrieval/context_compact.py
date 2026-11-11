@@ -56,7 +56,9 @@ def compact_messages(
 def receipt_payload(result: dict[str, Any] | str, *, cap: int = RECEIPT_CHARS) -> str:
     if isinstance(result, str):
         return _receipt(result, cap=cap)
-    return json.dumps(_brief(result), default=str)[:cap]
+    brief = _brief(result)
+    brief["compacted"] = True
+    return _encode(brief, cap)
 
 
 def assert_tool_pairing(messages: list[dict[str, Any]]) -> None:
@@ -111,10 +113,23 @@ def _receipt(content: str, *, cap: int) -> str:
     except json.JSONDecodeError:
         return text[:cap]
     if isinstance(data, dict) and data.get("compacted"):
-        return json.dumps(data, default=str)[:cap]
+        return _encode(data, cap)
     brief = _brief(data) if isinstance(data, dict) else {"preview": str(data)[:400]}
     brief["compacted"] = True
-    return json.dumps(brief, default=str)[:cap]
+    return _encode(brief, cap)
+
+
+def _encode(brief: dict[str, Any], cap: int) -> str:
+    """Shorten a receipt without cutting one document to save another.
+
+    A tool result that returns two documents used to be sliced at ``cap`` as one
+    string, so the second document lost the fields ranked to the front of its text.
+    Each document is already capped on its own. The combined receipt keeps them whole.
+    """
+    encoded = json.dumps(brief, default=str)
+    if len(encoded) <= cap or brief.get("documents"):
+        return encoded
+    return encoded[:cap]
 
 
 def _brief(data: dict[str, Any]) -> dict[str, Any]:
