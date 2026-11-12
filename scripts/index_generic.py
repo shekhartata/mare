@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.indexing.signals.nav_vectors import usable_embedder
-from app.indexing.signals.store import index_database, upgrade_vectors
+from app.indexing.signals.store import MissingGenericIndex, index_database, upgrade_vectors
 from app.llm import get_embedding_model
 from app.mongo.client import get_client
 
@@ -43,9 +43,10 @@ def main() -> int:
     client = get_client()
     embedder = usable_embedder(get_embedding_model())
     if args.upgrade_vectors:
-        summary = upgrade_vectors(client, embedder)
-        if args.database and summary.get("database") != args.database:
-            print(f"active index is {summary.get('database')}, not {args.database}")
+        try:
+            summary = upgrade_vectors(client, embedder, database=args.database or None)
+        except MissingGenericIndex as exc:
+            print(exc)
             return 1
         print(
             f"upgraded {summary['database']}: semantic {summary['semantic']}, "

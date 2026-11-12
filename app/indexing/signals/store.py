@@ -112,34 +112,57 @@ def save_generic_index(
     scope: dict[str, dict[str, Any]],
     embedder: Any | None = None,
 ) -> dict[str, Any]:
-    """Publish one build. A failed build leaves the previous active catalog in place."""
+    """Publish one database. A failed build leaves that database's previous catalog in place.
+
+    Cards and vectors for every other database stay on the cluster.
+    """
     agent = client[AGENT_DB]
     build_id = uuid.uuid4().hex
+    previous = _find_catalog(agent, index.database)
+    previous_build = str((previous or {}).get("build_id") or "")
     try:
         saved = _stage_build(agent, index, scope, build_id, embedder)
     except Exception:
         _drop_build(agent, build_id)
         raise
-    _drop_other_builds(agent, build_id)
+    if previous_build and previous_build != build_id:
+        _drop_build(agent, previous_build)
+    if previous and str(previous.get("_id")) == ACTIVE_ID:
+        agent[CATALOG].delete_many({"_id": ACTIVE_ID})
     return saved
 
 
-def upgrade_vectors(client: Any, embedder: Any) -> dict[str, Any]:
+def upgrade_vectors(
+    client: Any, embedder: Any, database: str | None = None
+) -> dict[str, Any]:
     """Embed saved cards without reading the source collections again."""
     provider = usable_embedder(embedder)
     if provider is None:
         raise SemanticIndexError("An embedding provider is required to upgrade vectors.")
-    index, scope, _bundle = load_generic_bundle(client)
+    index, scope, _bundle = load_generic_bundle(client, database)
     saved = save_generic_index(client, index, scope, embedder=provider)
     saved["database"] = index.database
     return saved
 
 
-def saved_index_summary(client: Any) -> dict[str, Any] | None:
-    """Read the active catalog only. None when this cluster has no saved index."""
-    catalog = client[AGENT_DB][CATALOG].find_one({"_id": ACTIVE_ID})
+def saved_index_summaries(client: Any) -> list[dict[str, Any]]:
+    """One summary per saved database. An empty list means nothing is indexed."""
+    return [
+        _summary(client, catalog)
+        for catalog in _catalog_rows(client[AGENT_DB])
+        if catalog.get("database")
+    ]
+
+
+def saved_index_summary(client: Any, database: str | None = None) -> dict[str, Any] | None:
+    """The saved index for one database, or the only saved index when the name is omitted."""
+    catalog = _find_catalog(client[AGENT_DB], database)
     if not catalog or not catalog.get("database"):
         return None
+    return _summary(client, catalog)
+
+
+def _summary(client: Any, catalog: dict[str, Any]) -> dict[str, Any]:
     collections = (catalog.get("profile") or {}).get("collections") or []
     documents = sum(
         int(item.get("population") or item.get("inspected") or 0) for item in collections
@@ -162,45 +185,18 @@ def saved_index_summary(client: Any) -> dict[str, Any] | None:
     }
 
 
-def load_generic_index(client: Any) -> tuple[GenericIndex, dict[str, dict[str, Any]]]:
-    index, scope, _bundle = load_generic_bundle(client)
+def load_generic_index(
+    client: Any, database: str | None = None
+) -> tuple[GenericIndex, dict[str, dict[str, Any]]]:
+    index, scope, _bundle = load_generic_bundle(client, database)
     return index, scope
 
 
 def load_generic_bundle(
-    client: Any,
+    client: Any, database: str | None = None
 ) -> tuple[GenericIndex, dict[str, dict[str, Any]], dict[str, Any]]:
     agent = client[AGENT_DB]
-    catalog = agent[CATALOG].find_one({"_id": ACTIVE_ID})
-    if not catalog:
-        raise MissingGenericIndex(
-            "No generic index is saved. Run scripts/index_generic.py --database <name>."
-        )
-    build_id = str(catalog.get("build_id") or "")
-    cards = [_card(row) for row in _rows(agent[CARDS], build_id)]
-    vector_rows = _rows(agent[NAV_VECTORS], build_id) if build_id else []
-    index = GenericIndex(
-        database=str(catalog["database"]),
-        profile=catalog.get("profile") or {},
-        text_fields={
-            name: tuple(fields) for name, fields in (catalog.get("text_fields") or {}).items()
-        },
-        groups={},
-        cards=cards,
-        signals=[],
-        validation={},
-        plans=list(catalog.get("plans") or []),
-        documents={},
-        generation_id=str(catalog.get("generation_id") or ""),
-    )
-    bundle = {
-        "build_id": build_id,
-        "legacy": not build_id,
-        "semantic": catalog.get("semantic") or "",
-        "embedding": catalog.get("embedding") or {},
-        "vectors": {str(row.get("node_id")): row for row in vector_rows},
-    }
-    return index, dict(catalog.get("scope") or {}), bundle
+    return _materialize(agent, _require_catalog(agent, database))
 
 
 def reset_loaded_indexes() -> None:
@@ -214,24 +210,21 @@ def _contract_key(embedder: Any | None) -> tuple | None:
 
 
 def _loaded_index(
-    client: Any, embedder: Any | None
+    client: Any, embedder: Any | None, database: str | None = None
 ) -> tuple[GenericIndex, dict[str, dict[str, Any]], dict[str, Any], dict[str, list[float]]]:
-    """Reuse cards and vectors while the active build and the embedding contract are unchanged.
+    """Reuse cards and vectors while that database's build and embedding contract are unchanged.
 
     Builds are immutable once published, so a matching build_id means the saved index is the same.
     """
-    active = client[AGENT_DB][CATALOG].find_one({"_id": ACTIVE_ID}, {"build_id": 1})
-    if not active:
-        raise MissingGenericIndex(
-            "No generic index is saved. Run scripts/index_generic.py --database <name>."
-        )
+    agent = client[AGENT_DB]
+    catalog = _require_catalog(agent, database)
     contract = _contract_key(embedder)
-    build_id = str(active.get("build_id") or "")
+    build_id = str(catalog.get("build_id") or "")
     with _LOADED_LOCK:
         hit = _LOADED.get((build_id, contract)) if build_id else None
     if hit is not None:
         return hit
-    index, scope, bundle = load_generic_bundle(client)
+    index, scope, bundle = _materialize(agent, catalog)
     status, vectors, _provider = _resolve_semantic(index, bundle, embedder)
     entry = (index, scope, status, vectors)
     if bundle["build_id"]:
@@ -242,10 +235,12 @@ def _loaded_index(
     return entry
 
 
-def load_generic_handlers(client: Any, embedder: Any | None = None) -> ToolHandlers:
+def load_generic_handlers(
+    client: Any, embedder: Any | None = None, database: str | None = None
+) -> ToolHandlers:
     from app.config import get_settings
 
-    index, scope, saved_status, vectors = _loaded_index(client, embedder)
+    index, scope, saved_status, vectors = _loaded_index(client, embedder, database)
     status = dict(saved_status)
     query_embedder = usable_embedder(embedder) if status.get("status") == "ready" else None
     if status.get("error") and get_settings().generic_semantic_required:
@@ -279,7 +274,7 @@ def _stage_build(
     contract = None
     semantic = "lexical_only"
     if provider is not None:
-        previous = _reusable_vectors(agent, provider)
+        previous = _reusable_vectors(agent, provider, index.database)
         records, stats = embed_nav_nodes(nodes, provider, previous)
         if len(records) != len(nodes):
             raise RuntimeError("navigation vectors are incomplete")
@@ -309,9 +304,9 @@ def _stage_build(
     if len(_rows(agent[CARDS], build_id)) != len(index.cards):
         raise RuntimeError("navigation cards were not stored")
     agent[CATALOG].replace_one(
-        {"_id": ACTIVE_ID},
+        {"_id": index.database},
         {
-            "_id": ACTIVE_ID,
+            "_id": index.database,
             "database": index.database,
             "generation_id": index.generation_id,
             "build_id": build_id,
@@ -334,8 +329,10 @@ def _stage_build(
     }
 
 
-def _reusable_vectors(agent: Any, embedder: Any) -> dict[str, dict[str, Any]]:
-    catalog = agent[CATALOG].find_one({"_id": ACTIVE_ID}) or {}
+def _reusable_vectors(
+    agent: Any, embedder: Any, database: str
+) -> dict[str, dict[str, Any]]:
+    catalog = _find_catalog(agent, database) or {}
     if not same_contract(catalog.get("embedding") or {}, embedder):
         return {}
     build_id = str(catalog.get("build_id") or "")
@@ -402,6 +399,7 @@ def _card(row: dict[str, Any]) -> dict[str, Any]:
         "document_ids": list(row.get("document_ids") or []),
         "filter": row.get("filter") or {},
         "search_text": row.get("search_text") or "",
+        "member_snippets": list(row.get("member_snippets") or []),
     }
 
 
@@ -410,9 +408,72 @@ def _drop_build(agent: Any, build_id: str) -> None:
     agent[NAV_VECTORS].delete_many({"build_id": build_id})
 
 
-def _drop_other_builds(agent: Any, build_id: str) -> None:
-    agent[CARDS].delete_many({"build_id": {"$ne": build_id}})
-    agent[NAV_VECTORS].delete_many({"build_id": {"$ne": build_id}})
+def _catalog_rows(agent: Any) -> list[dict[str, Any]]:
+    return [row for row in agent[CATALOG].find({}) if isinstance(row, dict)]
+
+
+def _find_catalog(agent: Any, database: str | None) -> dict[str, Any] | None:
+    """The catalog for one database, or the only catalog when no database is named."""
+    if database:
+        named = agent[CATALOG].find_one({"_id": database})
+        if named:
+            return named
+        legacy = agent[CATALOG].find_one({"_id": ACTIVE_ID})
+        if legacy and str(legacy.get("database") or "") == database:
+            return legacy
+        return None
+    rows = [row for row in _catalog_rows(agent) if row.get("database")]
+    if len(rows) == 1:
+        return rows[0]
+    return None
+
+
+def _require_catalog(agent: Any, database: str | None) -> dict[str, Any]:
+    found = _find_catalog(agent, database)
+    if found:
+        return found
+    if database:
+        raise MissingGenericIndex(
+            f"No generic index is saved for {database}. "
+            f"Run scripts/index_generic.py --database {database}."
+        )
+    rows = [row for row in _catalog_rows(agent) if row.get("database")]
+    if not rows:
+        raise MissingGenericIndex(
+            "No generic index is saved. Run scripts/index_generic.py --database <name>."
+        )
+    names = ", ".join(sorted(str(row.get("database")) for row in rows))
+    raise MissingGenericIndex(f"Name the database. Saved indexes exist for {names}.")
+
+
+def _materialize(
+    agent: Any, catalog: dict[str, Any]
+) -> tuple[GenericIndex, dict[str, dict[str, Any]], dict[str, Any]]:
+    build_id = str(catalog.get("build_id") or "")
+    cards = [_card(row) for row in _rows(agent[CARDS], build_id)]
+    vector_rows = _rows(agent[NAV_VECTORS], build_id) if build_id else []
+    index = GenericIndex(
+        database=str(catalog["database"]),
+        profile=catalog.get("profile") or {},
+        text_fields={
+            name: tuple(fields) for name, fields in (catalog.get("text_fields") or {}).items()
+        },
+        groups={},
+        cards=cards,
+        signals=[],
+        validation={},
+        plans=list(catalog.get("plans") or []),
+        documents={},
+        generation_id=str(catalog.get("generation_id") or ""),
+    )
+    bundle = {
+        "build_id": build_id,
+        "legacy": not build_id,
+        "semantic": catalog.get("semantic") or "",
+        "embedding": catalog.get("embedding") or {},
+        "vectors": {str(row.get("node_id")): row for row in vector_rows},
+    }
+    return index, dict(catalog.get("scope") or {}), bundle
 
 
 class MongoReader:

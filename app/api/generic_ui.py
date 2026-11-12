@@ -15,6 +15,7 @@ from app.indexing.signals.store import (
     MissingGenericIndex,
     SemanticIndexError,
     index_database,
+    saved_index_summaries,
     saved_index_summary,
 )
 from app.llm import get_embedding_model
@@ -80,22 +81,24 @@ PAGE = """<!DOCTYPE html>
     const pick = document.querySelector("#pick");
     const ask = document.querySelector("#ask");
     const database = document.querySelector("#database");
-    let saved = null;
+    let savedIndexes = [];
+
+    function savedFor(name) {
+      return savedIndexes.find((row) => row.database === name) || null;
+    }
 
     function refreshIndexState() {
-      const current = saved && saved.database === database.value;
+      const current = savedFor(database.value);
       ask.hidden = !current;
       if (current) {
-        const semantic = saved.semantic ? " (" + saved.semantic + ")." : ".";
-        status.textContent = saved.database + " is already indexed" + semantic
+        const semantic = current.semantic ? " (" + current.semantic + ")." : ".";
+        status.textContent = current.database + " is already indexed" + semantic
           + " Ask a question below.";
         return;
       }
-      status.textContent = saved
-        ? "Saved index is for " + saved.database + ". Index this database to replace it."
-        : (database.options.length
-          ? "Choose a database and index it."
-          : "No user databases on this cluster.");
+      status.textContent = database.options.length
+        ? "This database is not indexed yet."
+        : "No user databases on this cluster.";
     }
 
     async function post(path, body) {
@@ -126,10 +129,11 @@ PAGE = """<!DOCTYPE html>
           database.append(option);
         }
         pick.hidden = false;
-        saved = payload.index || null;
-        if (saved && [...database.options].some((option) => option.value === saved.database)) {
-          database.value = saved.database;
-        }
+        savedIndexes = payload.indexes || [];
+        const first = savedIndexes.find((row) =>
+          [...database.options].some((option) => option.value === row.database)
+        );
+        if (first) database.value = first.database;
         refreshIndexState();
       } catch (error) {
         status.textContent = error.message;
@@ -147,10 +151,12 @@ PAGE = """<!DOCTYPE html>
           database: database.value,
           limit: Number(document.querySelector("#limit").value || 0),
         });
-        saved = {
+        const existing = savedFor(payload.database);
+        savedIndexes = savedIndexes.filter((row) => row.database !== payload.database);
+        savedIndexes.push({
           database: payload.database,
-          semantic: payload.semantic || "",
-        };
+          semantic: payload.semantic || (existing && existing.semantic) || "",
+        });
         if (payload.already) {
           refreshIndexState();
           return;
@@ -175,6 +181,7 @@ PAGE = """<!DOCTYPE html>
       try {
         const payload = await post("/ui/ask", {
           uri: uri.value,
+          database: database.value,
           question: document.querySelector("#question").value,
         });
         const indexStatus = payload.index_status || {};
@@ -230,6 +237,7 @@ class IndexBody(BaseModel):
 
 class AskBody(BaseModel):
     uri: str = ""
+    database: str = ""
     question: str = ""
 
 
@@ -247,7 +255,11 @@ def connect(body: ConnectBody) -> dict:
             for name in client.list_database_names()
             if name not in _SKIP_DATABASES
         ]
-        return {"databases": names, "index": saved_index_summary(client)}
+        return {
+            "databases": names,
+            "indexes": saved_index_summaries(client),
+            "index": saved_index_summary(client),
+        }
     except PyMongoError as exc:
         raise HTTPException(400, _public_error(exc)) from exc
     finally:
@@ -260,8 +272,8 @@ def build_index(body: IndexBody) -> dict:
         raise HTTPException(400, "Choose a database.")
     client = _open(body.uri)
     try:
-        saved = saved_index_summary(client)
-        if saved and saved["database"] == body.database.strip():
+        saved = saved_index_summary(client, body.database.strip())
+        if saved:
             return saved
         return index_database(
             client,
@@ -282,7 +294,10 @@ def ask_saved(body: AskBody) -> dict:
     client = _open(body.uri)
     try:
         session, timing = run_saved_generic(
-            client, body.question.strip(), get_embedding_model()
+            client,
+            body.question.strip(),
+            get_embedding_model(),
+            database=body.database.strip() or None,
         )
     except (MissingGenericIndex, SemanticIndexError) as exc:
         raise HTTPException(409, str(exc)) from exc

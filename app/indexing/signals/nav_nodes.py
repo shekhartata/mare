@@ -8,15 +8,36 @@ NODE_BUILDER_VERSION = "1"
 _SUMMARY = 480
 
 
+def _shown_fields(name: str, fields: list[str], plans: list[dict[str, Any]]) -> list[str]:
+    """Hop fields stay visible. A plain alphabetical cut can hide the join."""
+    preferred: list[str] = []
+    for plan in plans:
+        if plan.get("op") != "hop" or str(plan.get("collection") or "") != name:
+            continue
+        field = str(plan.get("field") or "")
+        if field and field not in preferred:
+            preferred.append(field)
+    ordered = list(preferred)
+    for field in fields:
+        if field not in ordered:
+            ordered.append(field)
+    return ordered[:12]
+
+
 def build_nav_nodes(index: Any) -> list[dict[str, Any]]:
     """Group cards and collection nodes. Ids and embedding text stay stable."""
     nodes: list[dict[str, Any]] = []
+    plans = list(getattr(index, "plans", None) or [])
     fields_by_col = {
-        str(coll["name"]): [
-            str(field["path"])
-            for field in coll.get("fields") or []
-            if "." not in str(field["path"]) and "[]" not in str(field["path"])
-        ]
+        str(coll["name"]): _shown_fields(
+            str(coll["name"]),
+            [
+                str(field["path"])
+                for field in coll.get("fields") or []
+                if "." not in str(field["path"]) and "[]" not in str(field["path"])
+            ],
+            plans,
+        )
         for coll in index.profile.get("collections") or []
     }
     for card in index.cards:
@@ -36,6 +57,7 @@ def build_nav_nodes(index: Any) -> list[dict[str, Any]]:
                 },
                 "schema": {"important_fields": fields_by_col.get(collection, [])[:12]},
                 "metadata": {"document_count": len(card.get("document_ids") or [])},
+                "member_snippets": list(card.get("member_snippets") or []),
             }
         )
     for coll in index.profile.get("collections") or []:

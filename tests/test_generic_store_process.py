@@ -12,7 +12,7 @@ import pytest
 
 from app.constants import AGENT_DB
 from app.datagen.shop_fixture import documents as shop_documents
-from app.indexing.signals.store import ACTIVE_ID, CARDS, CATALOG
+from app.indexing.signals.store import CARDS, CATALOG, NAV_VECTORS
 from app.mongo.client import get_client, ping
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path.cwd()))
 from app.indexing.signals.store import load_generic_handlers
 from app.mongo.client import get_client
 
-handlers = load_generic_handlers(get_client(), None)
+handlers = load_generic_handlers(get_client(), None, "mare_generic_probe")
 found = handlers["search_information"](
     "sweater pilled after one wash",
     tenant_id="generic",
@@ -87,8 +87,6 @@ def test_saved_index_is_queried_by_another_process():
 
     client = get_client()
     agent = client[AGENT_DB]
-    previous_catalog = agent[CATALOG].find_one({"_id": ACTIVE_ID})
-    previous_cards = list(agent[CARDS].find({}))
     try:
         client.drop_database(PROBE)
         probe = client[PROBE]
@@ -101,9 +99,9 @@ def test_saved_index_is_queried_by_another_process():
         assert "order=ord_1044 wool=1 none=0" in queried.stdout
     finally:
         client.drop_database(PROBE)
-        agent[CARDS].delete_many({})
-        agent[CATALOG].delete_many({})
-        if previous_catalog:
-            agent[CATALOG].replace_one({"_id": ACTIVE_ID}, previous_catalog, upsert=True)
-        if previous_cards:
-            agent[CARDS].insert_many(previous_cards)
+        catalog = agent[CATALOG].find_one({"_id": PROBE}) or {}
+        build_id = str(catalog.get("build_id") or "")
+        if build_id:
+            agent[CARDS].delete_many({"build_id": build_id})
+            agent[NAV_VECTORS].delete_many({"build_id": build_id})
+        agent[CATALOG].delete_many({"_id": PROBE})

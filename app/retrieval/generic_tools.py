@@ -104,12 +104,14 @@ class GenericSurface:
         hits = ranked[:cap]
         if not hits:
             hits = [node for node in pool if node["node_type"] == "collection"][:cap]
-        results = [_brief(node) for node in hits]
+        results = [_brief(node, query) for node in hits]
         documents = self._documents_named_in(self._focus(query), cap)
         origins = _origins_for(documents)
         related = self._related(origins, query) if origins else []
         if not related:
             related = self._related([*hits, *origins], query)
+        if not documents:
+            documents = self._promoted_document(hits, query)
         self._finish_timing()
         payload: dict[str, Any] = {
             "method": mode or "hybrid",
@@ -120,6 +122,9 @@ class GenericSurface:
         payload["results"] = results
         payload["related_nodes"] = related
         payload["index_status"] = dict(self.semantic)
+        hint = "" if documents else _missing_id_hint(query, hits)
+        if hint:
+            payload["hint"] = hint
         return payload
 
     def retrieve_evidence(
@@ -160,6 +165,15 @@ class GenericSurface:
                 missing.append(node_id)
                 continue
             id_list = list((node.get("source") or {}).get("document_ids") or [])
+            if not id_list:
+                hints.append(
+                    {
+                        "node_id": node_id,
+                        "document_count": (node.get("metadata") or {}).get("document_count") or 0,
+                        "hint": "no member list; use query_documents with a filter",
+                    }
+                )
+                continue
             named = _member_ids_named(id_list, self._focus(query or ""))
             if len(id_list) > MEMBER_PREFETCH_LIMIT and named:
                 self._collect_named(
@@ -169,19 +183,19 @@ class GenericSurface:
                     break
                 continue
             if len(id_list) > MEMBER_PREFETCH_LIMIT:
-                hints.append(
-                    {
-                        "node_id": node_id,
-                        "document_count": len(id_list),
-                        "hint": (
-                            f"card has {len(id_list)} documents; "
-                            "use query_documents with a filter"
-                        ),
-                    }
-                )
+                hints.append(_filter_hint(node_id, len(id_list)))
+                continue
+            asked = query or self.question or ""
+            if (
+                asked
+                and node.get("member_snippets")
+                and _id_like(asked)
+                and not _ids_to_read(node, asked)
+            ):
+                hints.append(_filter_hint(node_id, len(id_list)))
                 continue
             origins.append(node)
-            for doc in self._docs_for(node, query or "", cap):
+            for doc in self._docs_for(node, asked, cap):
                 key = f"{doc['ref']['collection']}:{doc['ref']['document_id']}"
                 if key in seen:
                     continue
@@ -255,18 +269,19 @@ class GenericSurface:
         for plan in self.index.plans:
             if plan.get("op") == "hop":
                 hop_plans.setdefault(str(plan.get("collection") or ""), []).append(plan)
-        sources = [
-            node.get("source") or {}
+        candidates = [
+            node
             for node in nodes
             if str((node.get("source") or {}).get("collection") or "") in hop_plans
         ]
         loaded: dict[str, list[dict[str, Any]]] = {}
         wanted: list[tuple[str, str, str, Any, str]] = []
         seen: set[str] = set()
-        for position, source in enumerate(sources):
+        for position, node in enumerate(candidates):
+            source = node.get("source") or {}
             collection = str(source.get("collection") or "")
             if collection not in loaded:
-                loaded[collection] = self._members_of(collection, sources[position:])
+                loaded[collection] = self._members_of(collection, candidates[position:], query)
             ids = source.get("document_ids") or []
             members = []
             if ids and len(ids) <= MEMBER_PREFETCH_LIMIT:
@@ -300,18 +315,19 @@ class GenericSurface:
         return self._hop_nodes(wanted)
 
     def _members_of(
-        self, collection: str, sources: list[dict[str, Any]]
+        self, collection: str, nodes: list[dict[str, Any]], query: str
     ) -> list[dict[str, Any]]:
-        """One read for every small card of this collection still to be bound."""
+        """Read the members a hop can bind. Member lines replace a full card read."""
         ids: list[Any] = []
         taken: set[str] = set()
-        for source in sources:
+        for node in nodes:
+            source = node.get("source") or {}
             if str(source.get("collection") or "") != collection:
                 continue
             members = source.get("document_ids") or []
             if not members or len(members) > MEMBER_PREFETCH_LIMIT:
                 continue
-            for doc_id in members:
+            for doc_id in _ids_to_read(node, query):
                 if str(doc_id) not in taken:
                     taken.add(str(doc_id))
                     ids.append(doc_id)
@@ -395,6 +411,25 @@ class GenericSurface:
                 if len(documents) >= limit:
                     return documents
         return documents
+
+    def _promoted_document(
+        self, nodes: list[dict[str, Any]], query: str
+    ) -> list[dict[str, Any]]:
+        """Read the one member the card front did not already show. No other reads."""
+        for node in nodes:
+            collection = str((node.get("source") or {}).get("collection") or "")
+            snippets = _promoted_snippets(node, query)
+            if not collection or not snippets:
+                continue
+            doc_id = str(snippets[0].get("id") or "")
+            if not doc_id:
+                continue
+            rows = self._rows(collection, ids=[doc_id])
+            return [
+                _payload(doc, self.index.database, collection, focus=self._focus(query))
+                for doc in rows[:1]
+            ]
+        return []
 
     def _collect_named(
         self,
@@ -529,7 +564,13 @@ class GenericSurface:
         if not pool:
             return []
         scores = {id(node): 0.0 for node in pool}
-        lexical = sorted(pool, key=lambda node: (-_overlap(query, node), str(node["_id"])))
+        lexical = sorted(
+            pool,
+            key=lambda node: (
+                -(_overlap(query, node) + _snippet_gain(query, node)),
+                str(node["_id"]),
+            ),
+        )
         for rank, node in enumerate(lexical):
             scores[id(node)] += 1.0 / (60 + rank + 1)
         if self._vector_by_id and self._embedder is not None:
@@ -571,19 +612,24 @@ class GenericSurface:
         source = node.get("source") or {}
         collection = str(source.get("collection") or "")
         database = str(source.get("database") or self.index.database)
-        id_list = list(source.get("document_ids") or [])
-        if len(id_list) > MEMBER_PREFETCH_LIMIT:
+        listed = list(source.get("document_ids") or [])
+        if len(listed) > MEMBER_PREFETCH_LIMIT:
             return []
+        chosen = listed
+        if query and node.get("member_snippets") and _id_like(query):
+            chosen = _ids_to_read(node, query)
+            if not chosen:
+                return []
         filt = source.get("filter") or {}
         applied = None
-        if filt and filt != {"_id": {"$in": id_list}}:
+        if filt and filt != {"_id": {"$in": listed}}:
             applied = filt
         fetch_limit = None
-        if self._reader is not None and not id_list and applied is None:
+        if self._reader is not None and not chosen and applied is None:
             fetch_limit = max(limit, 20)
         rows = self._rows(
             collection,
-            ids=id_list or None,
+            ids=chosen or None,
             filt=applied,
             limit=fetch_limit,
         )
@@ -654,17 +700,28 @@ def _policies(surface: GenericSurface) -> dict[str, ToolPolicy]:
     }
 
 
-def _brief(node: dict[str, Any]) -> dict[str, Any]:
+def _brief(node: dict[str, Any], query: str = "") -> dict[str, Any]:
     source = node.get("source") or {}
+    summary = str(node.get("summary") or "")[:_SUMMARY]
+    ids = [str(doc_id) for doc_id in (source.get("document_ids") or [])]
+    shown = ids[:8]
+    # The stored summary is the front of the card. When a later member matches
+    # the question and that front does not, show those lines inside the same cap.
+    matched = _promoted_snippets(node, query)
+    if matched:
+        lines = [f"{item['id']}: {item['text']}" for item in matched[:3]]
+        summary = " ".join(lines)[:_SUMMARY]
+        front = [str(item["id"]) for item in matched[:3]]
+        shown = (front + [doc_id for doc_id in ids if doc_id not in front])[:8]
     return {
         "node_id": node.get("_id"),
         "name": node.get("name"),
         "node_type": node.get("node_type"),
-        "summary": str(node.get("summary") or "")[:_SUMMARY],
+        "summary": summary,
         "source": {
             "database": source.get("database"),
             "collection": source.get("collection"),
-            "document_ids": list(source.get("document_ids") or [])[:8],
+            "document_ids": shown,
         },
         "document_count": (node.get("metadata") or {}).get("document_count"),
         "important_fields": list((node.get("schema") or {}).get("important_fields") or [])[:12],
@@ -726,6 +783,110 @@ def _text(doc: dict[str, Any]) -> str:
             value = json.dumps(value, default=str)
         parts.append(f"{key} {value}")
     return " ".join(parts)
+
+
+def _snippet_gain(query: str, node: dict[str, Any]) -> int:
+    """Tokens the card text does not already contain, found on a member line."""
+    if not node.get("member_snippets"):
+        return 0
+    visible = " ".join(
+        [
+            str(node.get("name") or ""),
+            str(node.get("summary") or ""),
+            str(node.get("search_text") or ""),
+        ]
+    ).lower()
+    missing = [token for token in _tokens(query) if token not in visible]
+    if not missing:
+        return 0
+    blob = " ".join(str(item.get("text") or "") for item in node["member_snippets"]).lower()
+    return sum(1 for token in missing if token in blob)
+
+
+def _promoted_snippets(node: dict[str, Any], query: str) -> list[dict[str, Any]]:
+    summary = str(node.get("summary") or "")[:_SUMMARY]
+    if not query:
+        return []
+    missing = [token for token in _tokens(query) if token not in summary.lower()]
+    return _snippets_covering(node, missing)
+
+
+def _id_like(query: str) -> bool:
+    """An identifier, rather than a year or a small count, is in the question."""
+    for token in _tokens(query):
+        if not any(character.isdigit() for character in token):
+            continue
+        if len(token) >= 5 or any(character.isalpha() for character in token):
+            return True
+    return False
+
+
+def _missing_id_hint(query: str, nodes: list[dict[str, Any]]) -> str:
+    if not _id_like(query):
+        return ""
+    specific = [token for token in _tokens(query) if any(char.isdigit() for char in token)]
+    for node in nodes:
+        visible = " ".join(
+            [
+                str(node.get("name") or ""),
+                str(node.get("summary") or ""),
+                str(node.get("search_text") or ""),
+            ]
+        ).lower()
+        if specific and all(token in visible for token in specific):
+            return ""
+        if _snippet_hits(node, _tokens(query)):
+            return ""
+    return (
+        "no card line contains this id; "
+        "use query_documents with a filter on a field you saw"
+    )
+
+
+def _filter_hint(node_id: str, count: int) -> dict[str, Any]:
+    return {
+        "node_id": node_id,
+        "document_count": count,
+        "hint": f"card has {count} documents; use query_documents with a filter",
+    }
+
+
+def _ids_to_read(node: dict[str, Any], query: str) -> list[str]:
+    """Members to fetch for hop binding.
+
+    A card that stored member lines is not read in full. Only a line that carries
+    every id-like token in the question is fetched, and at most two of those.
+    """
+    members = [str(doc_id) for doc_id in ((node.get("source") or {}).get("document_ids") or [])]
+    snippets = node.get("member_snippets") or []
+    if not query or not snippets:
+        return members
+    return [
+        str(item["id"])
+        for item in _snippet_hits(node, _tokens(query))[:2]
+        if item.get("id")
+    ]
+
+
+def _snippet_hits(node: dict[str, Any], tokens: list[str]) -> list[dict[str, Any]]:
+    """Member lines that cover the question. An id token has to be on the same line."""
+    if not tokens:
+        return []
+    specific = [token for token in tokens if any(character.isdigit() for character in token)]
+    scored: list[tuple[int, str, dict[str, Any]]] = []
+    for item in node.get("member_snippets") or []:
+        text = str(item.get("text") or "").lower()
+        if specific and any(token not in text for token in specific):
+            continue
+        hits = sum(1 for token in tokens if token in text)
+        if hits:
+            scored.append((hits, str(item.get("id") or ""), item))
+    scored.sort(key=lambda row: (-row[0], row[1]))
+    return [item for _hits, _doc_id, item in scored]
+
+
+def _snippets_covering(node: dict[str, Any], tokens: list[str]) -> list[dict[str, Any]]:
+    return _snippet_hits(node, tokens)
 
 
 def _overlap(query: str, node: dict[str, Any]) -> int:

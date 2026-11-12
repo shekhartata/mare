@@ -387,6 +387,277 @@ def test_query_keeps_a_field_named_in_the_question():
     assert "APPROVE-ELIGIBLE" in focused["documents"][0]["text"]
 
 
+def test_a_buried_member_is_shown_without_reading_documents():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+
+    class Reader:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def fetch(self, collection, *, ids=None, filt=None, limit=None):
+            del collection, filt, limit
+            self.calls += 1
+            self.asked = [str(item) for item in (ids or [])]
+            if "uat-1" in self.asked:
+                return [{"_id": "uat-1", "problem_summary": "UAT atlas M50 queries"}]
+            return []
+
+    def search(snippets: list[dict[str, str]]) -> tuple[dict, list, int]:
+        reader = Reader()
+        surface = GenericSurface(index, reader=reader)
+        group = next(node for node in surface.nodes if node["node_type"] == "group")
+        group["summary"] = "Kafka stream processing into a timeseries collection"
+        group["search_text"] = group["summary"]
+        group["member_snippets"] = snippets
+        found = surface.search_information(
+            "Atlas M50 UAT queries",
+            tenant_id=None,
+            scope=None,
+            mode="lexical",
+            limit=8,
+        )
+        row = next(item for item in found["results"] if item["node_id"] == group["_id"])
+        return row, list(found.get("documents") or []), reader.calls
+
+    plain, plain_docs, plain_reads = search([])
+    shown, shown_docs, shown_reads = search(
+        [
+            {"id": "kafka-1", "text": "Atlas Stream Processing from Kafka"},
+            {"id": "uat-1", "text": "UAT environment running mongodb atlas M50 tier queries"},
+        ]
+    )
+    assert "uat-1" not in plain["summary"]
+    assert plain_docs == []
+    assert "uat-1" in shown["summary"]
+    assert len(shown["summary"]) <= 480
+    assert shown["source"]["document_ids"][0] == "uat-1"
+    assert [doc["ref"]["document_id"] for doc in shown_docs] == ["uat-1"]
+    assert shown_reads == plain_reads + 1
+
+
+def test_opening_the_debugging_card_reads_the_matching_session():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+    batches: list[list[str]] = []
+
+    class Reader:
+        def fetch(self, collection, *, ids=None, filt=None, limit=None):
+            del collection, filt, limit
+            asked = [str(item) for item in (ids or [])]
+            batches.append(asked)
+            if "uat-1" in asked:
+                return [{"_id": "uat-1", "problem_summary": "UAT atlas M50 queries"}]
+            return []
+
+    surface = GenericSurface(index, reader=Reader())
+    group = next(node for node in surface.nodes if node["node_type"] == "group")
+    group["summary"] = "Kafka stream processing into a timeseries collection"
+    group["search_text"] = group["summary"]
+    group["source"]["document_ids"] = [f"sess-{i}" for i in range(40)]
+    group["member_snippets"] = [
+        {"id": "kafka-1", "text": "Atlas Stream Processing from Kafka"},
+        {"id": "uat-1", "text": "UAT environment running mongodb atlas M50 tier queries"},
+    ]
+    found = surface.search_information(
+        "Atlas M50 UAT queries",
+        tenant_id=None,
+        scope=None,
+        mode="lexical",
+        limit=8,
+    )
+    assert "hint" not in found
+    opened = surface.retrieve_evidence(
+        [group["_id"]],
+        tenant_id=None,
+        query="Atlas M50 UAT queries",
+        max_documents=8,
+    )
+    assert [doc["ref"]["document_id"] for doc in opened["documents"]] == ["uat-1"]
+    assert batches
+    assert all(len(batch) <= 2 for batch in batches)
+
+
+def test_a_business_id_reads_the_matching_member_and_not_the_card():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+
+    class Reader:
+        def __init__(self) -> None:
+            self.batches: list[list[str]] = []
+
+        def fetch(self, collection, *, ids=None, filt=None, limit=None):
+            del collection, filt, limit
+            batch = [str(item) for item in (ids or [])]
+            self.batches.append(batch)
+            if "right-quote" in batch:
+                return [{"_id": "right-quote"}]
+            return []
+
+    reader = Reader()
+    surface = GenericSurface(index, reader=reader)
+    group = next(node for node in surface.nodes if node["node_type"] == "group")
+    group["summary"] = "quoted standard purchase"
+    group["search_text"] = group["summary"]
+    group["source"]["document_ids"] = ["right-quote", *[f"q-{i}" for i in range(109)]]
+    group["member_snippets"] = [
+        {"id": "q-0", "text": "quoted in 2025 for a standard purchase"},
+        {"id": "right-quote", "text": "MIT-2025-0825-022147 quoted standard purchase"},
+    ]
+    found = surface.search_information(
+        "MIT-2025-0825-022147",
+        tenant_id=None,
+        scope=None,
+        mode="lexical",
+        limit=8,
+    )
+    assert all(len(batch) <= 2 for batch in reader.batches)
+    assert [doc["ref"]["document_id"] for doc in found.get("documents") or []] == ["right-quote"]
+    assert "hint" not in found
+    opened = surface.retrieve_evidence(
+        [group["_id"]],
+        tenant_id=None,
+        query="MIT-2025-0825-022147",
+        max_documents=8,
+    )
+    assert [doc["ref"]["document_id"] for doc in opened["documents"]] == ["right-quote"]
+    assert all(len(batch) <= 2 for batch in reader.batches)
+
+    missed = Reader()
+    surface = GenericSurface(index, reader=missed)
+    group = next(node for node in surface.nodes if node["node_type"] == "group")
+    group["summary"] = "quoted standard purchase"
+    group["search_text"] = group["summary"]
+    group["source"]["document_ids"] = [f"q-{i}" for i in range(110)]
+    group["member_snippets"] = [
+        {"id": "q-0", "text": "quoted in 2025 for a standard purchase"}
+    ]
+    found = surface.search_information(
+        "MIT-2025-0825-022147",
+        tenant_id=None,
+        scope=None,
+        mode="lexical",
+        limit=8,
+    )
+    assert all(len(batch) <= 2 for batch in missed.batches)
+    assert "q-0" not in [doc["ref"]["document_id"] for doc in found.get("documents") or []]
+    assert "query_documents" in found["hint"]
+    opened = surface.retrieve_evidence(
+        [group["_id"]],
+        tenant_id=None,
+        query="MIT-2025-0825-022147",
+        max_documents=8,
+    )
+    assert opened["documents"] == []
+    assert "query_documents" in opened["hints"][0]["hint"]
+    assert all(len(batch) <= 2 for batch in missed.batches)
+
+
+def test_a_card_whose_summary_already_matches_keeps_that_summary():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+    surface = GenericSurface(index)
+    group = next(node for node in surface.nodes if node["node_type"] == "group")
+    group["summary"] = "Atlas M50 UAT queries already on the card"
+    group["search_text"] = group["summary"]
+    group["member_snippets"] = [
+        {"id": "uat-1", "text": "Atlas M50 UAT queries from a later member"}
+    ]
+    original = [str(doc_id) for doc_id in group["source"]["document_ids"][:8]]
+    found = surface.search_information(
+        "Atlas M50 UAT queries",
+        tenant_id=None,
+        scope=None,
+        mode="lexical",
+        limit=8,
+    )
+    row = next(item for item in found["results"] if item["node_id"] == group["_id"])
+    assert row["summary"] == group["summary"]
+    assert row["source"]["document_ids"] == original
+    assert not found.get("documents")
+
+
+def test_a_member_line_ranks_only_when_the_card_front_misses():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+    surface = GenericSurface(index)
+    buried = {
+        "_id": "card:buried",
+        "name": "kafka",
+        "summary": "kafka only",
+        "search_text": "kafka only",
+        "member_snippets": [{"id": "uat-1", "text": "UAT atlas M50 workload"}],
+    }
+    other = {
+        "_id": "card:other",
+        "name": "notes",
+        "summary": "unrelated notes",
+        "search_text": "unrelated notes",
+        "member_snippets": [],
+    }
+    strong = {
+        "_id": "card:strong",
+        "name": "visible",
+        "summary": "UAT atlas M50 workload already visible",
+        "search_text": "UAT atlas M50 workload already visible",
+        "member_snippets": [],
+    }
+    ranked = surface._rank(
+        "UAT atlas M50 workload already visible", [buried, other, strong]
+    )
+    assert [node["_id"] for node in ranked] == ["card:strong", "card:buried", "card:other"]
+
+
+def test_collection_node_returns_a_filter_hint_and_no_documents():
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+
+    class Reader:
+        def fetch(self, collection, *, ids=None, filt=None, limit=None):
+            del collection, ids, filt, limit
+            raise AssertionError("collection node must not be read")
+
+    surface = GenericSurface(index, reader=Reader())
+    collection = next(node for node in surface.nodes if node["node_type"] == "collection")
+    got = surface.retrieve_evidence(
+        [collection["_id"]],
+        tenant_id=None,
+        query="Atlas M50 UAT",
+        max_documents=8,
+    )
+    assert got["documents"] == []
+    assert got["hints"][0]["node_id"] == collection["_id"]
+    assert "query_documents" in got["hints"][0]["hint"]
+
+
+def test_a_join_field_past_the_twelfth_name_stays_visible():
+    from app.indexing.signals.nav_nodes import _shown_fields
+
+    fields = [f"field_{i:02d}" for i in range(12)] + ["session_id"]
+    shown = _shown_fields(
+        "hypotheses",
+        fields,
+        [{"op": "hop", "collection": "hypotheses", "field": "session_id"}],
+    )
+    assert shown[0] == "session_id"
+    assert len(shown) == 12
+
+
+def test_small_cards_store_one_short_line_per_member():
+    from app.indexing.signals.orchestrator import _member_snippets
+
+    line = _member_snippets(
+        {"a": {"problem_summary": "UAT " + ("x" * 400)}},
+        ["a"],
+        ("problem_summary",),
+    )
+    assert line == [{"id": "a", "text": ("UAT " + ("x" * 400))[:160]}]
+    assert _member_snippets(
+        {"a": {"problem_summary": "kept"}},
+        [str(i) for i in range(201)],
+        ("problem_summary",),
+    ) == []
+    index = build_generic_index(shop_documents(), database="mare_shop", use_cache=False)
+    for card in index.cards:
+        ids = {str(doc_id) for doc_id in card["document_ids"]}
+        assert {item["id"] for item in card["member_snippets"]} <= ids
+        assert all(len(item["text"]) <= 160 for item in card["member_snippets"])
+
+
 def test_warehouse_absence_filter_returns_no_documents():
     index = build_generic_index(warehouse_documents(), database="mare_warehouse", use_cache=False)
     handlers = generic_handlers(index)
