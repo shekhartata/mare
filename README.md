@@ -28,17 +28,14 @@ Index the database once. Cards and hops are written to `_agent_retrieval` on tha
 uvicorn app.main:app --port 8080
 ```
 
-The same server as a container. The image does not contain `.env`. Pass the key and the connection string at run time. `PORT` defaults to 8080.
+The same server from `Dockerfile`: the `app` package only, user `mare`, port 8080. `.env` and `scripts/` are not in the image. Pass the env file at run time, with unquoted values.
 
 ```bash
 docker build -t mare .
-docker run --rm -p 8080:8080 \
-  -e OPENAI_API_KEY -e OPENAI_MODEL=gpt-5 -e OPENAI_MODEL_AGENT=gpt-5-mini \
-  -e MONGODB_URI \
-  mare
+docker run --rm -p 8080:8080 --env-file .env mare
 ```
 
-`GET /health` is the container health check. It stays up when the demo cluster is unreachable, so the connect page can still index another database.
+`GET /health` is the image health check. It stays up when Mongo is unreachable, so the connect page can still open. Index a large database on the host with `scripts/index_generic.py`. The container loads the saved cards.
 
 Open `http://localhost:8080`. Paste the connection string, choose the database, and index. Asking on the page is optional. Closing it leaves the cards on the cluster. Indexing also saves one vector per navigation card, so a later question embeds the question and not the cards. An index saved before that needs `python scripts/index_generic.py --upgrade-vectors`. If the embedding model does not match those vectors, search stays lexical and the response says so.
 
