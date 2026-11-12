@@ -843,7 +843,9 @@ def _evidence_outcome(
     seen |= keys
     if fresh:
         return "new"
-    if name in _PROBE_TOOLS and not result.get("documents"):
+    # The first time a retrieve comes back empty, that is guidance. The same
+    # empty call again is a wasted turn, which is what still ends a stuck ask.
+    if not result.get("documents") and (name in _PROBE_TOOLS or name == "retrieve_evidence"):
         probe = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
         if probe not in evidence["probes"]:
             evidence["probes"].add(probe)

@@ -17,8 +17,15 @@ from app.retrieval.generic_ask import run_saved_generic
 def main() -> int:
     parser = argparse.ArgumentParser(description="Query the saved generic MARE index.")
     parser.add_argument("question")
+    parser.add_argument(
+        "--database",
+        default="",
+        help="Saved database to ask. Required when more than one index exists.",
+    )
     args = parser.parse_args()
-    session, timing = run_saved_generic(get_client(), args.question, get_embedding_model())
+    session, timing = run_saved_generic(
+        get_client(), args.question, get_embedding_model(), database=args.database or None
+    )
     print(session.answer)
     status = timing["index_status"]
     print(f"{timing['request_ms']} ms (load {timing['load_ms']} ms), index {status.get('status')}")

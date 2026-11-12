@@ -382,6 +382,55 @@ def _forced(call: dict) -> bool:
     return call["tool_choice"] != "auto"
 
 
+def test_a_filter_hint_is_guidance_and_does_not_end_the_ask():
+    def retrieve(node_ids, **kwargs):
+        del kwargs
+        return {
+            "count": 0,
+            "documents": [],
+            "missing_nodes": [],
+            "hints": [
+                {
+                    "node_id": node_ids[0],
+                    "hint": "no member list; use query_documents with a filter",
+                }
+            ],
+            "related_nodes": [],
+        }
+
+    handlers = {**_handlers(), "retrieve_evidence": retrieve}
+    session, client = _run(
+        [
+            _response([_tool_call("c1", "search_information", {"query": "uat"})]),
+            _response([_retrieve("c2")]),
+            _response([_tool_call("c3", "search_information", {"query": "uat"})]),
+            _response([_tool_call("c4", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers,
+    )
+    assert [_forced(call) for call in client.calls] == [False, False, False, False]
+    assert session.stop_reason == "completed"
+
+
+def test_the_same_empty_retrieve_twice_still_ends_the_ask():
+    def retrieve(node_ids, **kwargs):
+        del node_ids, kwargs
+        return {"count": 0, "documents": [], "missing_nodes": [], "hints": [], "related_nodes": []}
+
+    handlers = {**_handlers(), "retrieve_evidence": retrieve}
+    session, client = _run(
+        [
+            _response([_retrieve("c1")]),
+            _response([_retrieve("c2")]),
+            _response([_retrieve("c3")]),
+            _response([_tool_call("c4", "submit_answer", SUBMIT)]),
+        ],
+        handlers=handlers,
+    )
+    assert [_forced(call) for call in client.calls] == [False, False, False, True]
+    assert session.stop_reason == "no_new_evidence"
+
+
 def test_two_turns_without_new_evidence_force_a_submit():
     session, client = _run(
         [

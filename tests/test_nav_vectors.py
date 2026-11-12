@@ -124,7 +124,7 @@ def test_failed_publish_keeps_the_previous_build():
         raise AssertionError("expected the write to fail")
     finally:
         cards.insert_many = original
-    catalog = client["_agent_retrieval"]["generic_catalog"].find_one({"_id": "active"})
+    catalog = client["_agent_retrieval"]["generic_catalog"].find_one({"_id": "mare_shop"})
     assert catalog["build_id"] == first["build_id"]
     loaded, _scope_out = load_generic_handlers(client, FakeEmbed()), None
     assert loaded.semantic["status"] == "ready"
@@ -269,8 +269,8 @@ def test_cached_build_still_rejects_another_embedding_model():
 
 
 def test_request_time_includes_handler_load(monkeypatch):
-    def slow_load(client, embedder=None):
-        del client, embedder
+    def slow_load(client, embedder=None, database=None):
+        del client, embedder, database
         from app.retrieval.tool_policy import ToolHandlers
 
         handlers = ToolHandlers({})

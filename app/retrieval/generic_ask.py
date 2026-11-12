@@ -13,10 +13,11 @@ def run_saved_generic(
     client: Any,
     question: str,
     embedder: Any | None = None,
+    database: str | None = None,
     **agent_kwargs: Any,
 ) -> tuple[Any, dict[str, Any]]:
     started = time.perf_counter()
-    handlers = load_generic_handlers(client, embedder)
+    handlers = load_generic_handlers(client, embedder, database)
     load_ms = (time.perf_counter() - started) * 1000
     session = run_agent(
         question,

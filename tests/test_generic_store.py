@@ -213,6 +213,72 @@ def test_connect_page_offers_index_and_ask():
     assert "/ui/ask" in PAGE
 
 
+def _build_id(client: _Client, database: str) -> str:
+    row = client["_agent_retrieval"]["generic_catalog"].find_one({"_id": database})
+    assert row is not None
+    return str(row["build_id"])
+
+
+def test_indexing_another_database_keeps_the_first_cards():
+    docs = shop_documents()
+    client = _Client()
+    for name, rows in docs.items():
+        client["mare_shop"][name].docs = list(rows)
+        client["mare_other"][name].docs = list(rows)
+    index_database(client, "mare_shop")
+    shop_build = _build_id(client, "mare_shop")
+    index_database(client, "mare_other")
+    cards = client["_agent_retrieval"]["generic_cards"]
+    other_build = _build_id(client, "mare_other")
+    assert other_build != shop_build
+    assert cards.count_documents({"build_id": shop_build}) > 0
+    assert cards.count_documents({"build_id": other_build}) > 0
+    shop, _shop_scope = load_generic_index(client, "mare_shop")
+    other, _other_scope = load_generic_index(client, "mare_other")
+    assert shop.database == "mare_shop"
+    assert other.database == "mare_other"
+    try:
+        load_generic_index(client)
+    except MissingGenericIndex as exc:
+        assert "mare_shop" in str(exc)
+        assert "mare_other" in str(exc)
+    else:
+        raise AssertionError("expected a database name")
+    index_database(client, "mare_shop")
+    assert cards.count_documents({"build_id": shop_build}) == 0
+    assert cards.count_documents({"build_id": other_build}) > 0
+    reloaded, _reloaded_scope = load_generic_index(client, "mare_other")
+    assert reloaded.database == "mare_other"
+
+
+def test_a_legacy_catalog_still_loads_beside_another_database():
+    docs = shop_documents()
+    client = _Client()
+    for name, rows in docs.items():
+        client["mare_shop"][name].docs = list(rows)
+        client["mare_other"][name].docs = list(rows)
+    index = build_generic_index(docs, database="mare_shop", use_cache=False)
+    client["_agent_retrieval"]["generic_catalog"].docs = [
+        {
+            "_id": "active",
+            "database": "mare_shop",
+            "profile": index.profile,
+            "plans": index.plans,
+            "text_fields": {},
+            "scope": {name: {"complete": True} for name in docs},
+            "build_id": "shop-build",
+        }
+    ]
+    client["_agent_retrieval"]["generic_cards"].docs = [
+        {**card, "build_id": "shop-build"} for card in index.cards
+    ]
+    index_database(client, "mare_other")
+    loaded, _scope = load_generic_index(client, "mare_shop")
+    assert loaded.database == "mare_shop"
+    kept = client["_agent_retrieval"]["generic_cards"].count_documents({"build_id": "shop-build"})
+    assert kept > 0
+
+
 def test_saved_summary_reports_an_existing_database_without_rereading_it():
     docs = shop_documents()
     client = _Client()

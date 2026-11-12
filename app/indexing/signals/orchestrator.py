@@ -169,6 +169,33 @@ def _install(enabled: list[str]) -> None:
             register(known[name])
 
 
+# A card the ask can open stores one short line per member. Larger cards already
+# refuse a prefetch, so they do not carry a line for every document.
+_SNIPPET_CHARS = 160
+_SNIPPET_MEMBER_LIMIT = 200
+
+
+def _member_snippets(
+    by_id: dict[str, dict[str, Any]],
+    document_ids: list[Any],
+    fields: tuple[str, ...],
+) -> list[dict[str, str]]:
+    if len(document_ids) > _SNIPPET_MEMBER_LIMIT:
+        return []
+    snippets: list[dict[str, str]] = []
+    for doc_id in document_ids:
+        doc = by_id.get(str(doc_id)) or {}
+        parts = [
+            " ".join(str(doc.get(field_name) or "").split())
+            for field_name in fields
+            if isinstance(doc.get(field_name), str) and str(doc.get(field_name)).strip()
+        ]
+        text = " ".join(parts)[:_SNIPPET_CHARS]
+        if text:
+            snippets.append({"id": str(doc_id), "text": text})
+    return snippets
+
+
 def _cards(
     database: str,
     groups: dict[str, list[dict[str, Any]]],
@@ -191,12 +218,16 @@ def _cards(
                     value = doc.get(field_name)
                     if isinstance(value, str) and value:
                         snippets.append(value)
+            document_ids = list(group.get("document_ids") or [])
             cards.append(
                 {
                     "key": group.get("key"),
                     "collection": collection,
-                    "document_ids": list(group.get("document_ids") or []),
-                    "filter": {"_id": {"$in": list(group.get("document_ids") or [])}},
+                    "document_ids": document_ids,
+                    "filter": {"_id": {"$in": document_ids}},
+                    "member_snippets": _member_snippets(
+                        by_id.get(collection, {}), document_ids, fields
+                    ),
                     "search_text": compose_search_text(
                         name=str(group.get("name") or group.get("key")),
                         database=database,
